@@ -70,10 +70,20 @@ fn render_header(s: &mut String, window_label: &str, project: bool, load: &LoadR
     } else {
         ""
     };
+    // Report the in-window count against the file total when they differ.
+    // Showing only the file total next to a summary computed from the
+    // filtered rows leaves the reader unable to explain the gap between
+    // the two numbers, which reads as a bug in the report.
+    let in_window = load.rows.len();
+    let parsed = load.parsed_total();
+    let counted = if in_window == parsed {
+        plural(parsed, "row")
+    } else {
+        format!("{in_window} of {}", plural(parsed, "row"))
+    };
     let _ = writeln!(
         s,
-        "brief report — {window_label}{project_note} · {} · {} malformed",
-        plural(load.parsed_total(), "row"),
+        "brief report — {window_label}{project_note} · {counted} · {} malformed",
         load.malformed
     );
 }
@@ -229,6 +239,28 @@ mod tests {
         assert!(
             text.contains(&format!("Handled totals (1 call — {SCOPE_NOTE}):")),
             "scope note must be attached to the Handled totals line: {text}"
+        );
+    }
+
+    #[test]
+    fn header_shows_in_window_count_against_file_total_when_filtered() {
+        // 5 rows parsed from the file, 1 survived the window filter.
+        let rows = vec![row("grep", 10, 10)];
+        let l = LoadResult {
+            rows,
+            malformed: 0,
+            total_lines: 5,
+        };
+        let text = render(
+            "last 1 hour",
+            false,
+            &l,
+            &ReportBody::Data(aggregate(&l.rows)),
+        );
+        assert!(
+            text.contains("1 of 5 rows"),
+            "a filtered report must explain the gap between file total and \
+             the count its numbers are computed from, got: {text}"
         );
     }
 
