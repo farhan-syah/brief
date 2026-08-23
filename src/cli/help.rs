@@ -26,16 +26,24 @@ Environment overrides:
   BRIEF_ENABLED            0 or false disables folding entirely
   BRIEF_FOLD_DIR           directory fold files are written to
 
+brief needs no integration to be useful: prefixing any command with
+`brief` works from a shell, a script, or any coding agent that runs shell
+commands. Nothing below is required — `hook` and `init` only automate the
+prefixing for one specific harness.
+
 `report` is reserved as argv[1] for `brief report [...]`, a falsifiable
 summary of the tracking data brief has recorded; see `brief report --help`.
 
-`hook` is reserved as argv[1] for `brief hook`, a Claude Code PreToolUse
-hook that rewrites plain {} Bash calls to go through brief,
-declining on anything it cannot confidently classify; see `brief init --help`
-to install it.
-
-`init` is reserved as argv[1] for `brief init [...]`, which installs or
-uninstalls that hook in Claude Code's settings.json; see `brief init --help`.
+`hook` and `init` are the Claude Code integration, and the only harness
+brief ships an adapter for. `brief hook` reads a PreToolUse payload on
+stdin and rewrites plain {} Bash calls to go through
+brief, declining on anything it cannot confidently classify. `brief init`
+installs or uninstalls that hook in Claude Code's settings.json; see
+`brief init --help`. Another harness needs its own adapter, or can simply
+be told to use the `brief <program>` prefix above — or use PATH shims
+instead: `brief init --shims <dir>` generates wrapper scripts that work
+with any harness and any shell, no adapter required; see
+`brief init --help`.
 
 A program literally named `report`, `hook`, or `init` must be run by path,
 e.g. `brief ./hook`.

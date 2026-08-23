@@ -13,6 +13,10 @@
 //! is the same one the flag reservations already accept: a program
 //! literally named `report`, `hook`, or `init` can no longer be run as
 //! `brief <name>`, only by path (e.g. `brief ./hook`).
+//!
+//! `program` is never spawned with a bare `Command::new(&program)` — see
+//! `path_shim` for why (PATH-shim recursion) and how the actual program
+//! and PATH the child gets are resolved.
 
 use std::ffi::{OsStr, OsString};
 use std::io::Write;
@@ -28,6 +32,7 @@ use crate::track::TrackConfig;
 
 use super::help::{help_text, version};
 use super::passthrough;
+use super::path_shim;
 
 /// Whether `program`'s basename is one of brief's fold targets — the same
 /// decision `main_with` routes argv on. Exposed via `cli::is_fold_target`
@@ -99,9 +104,27 @@ pub fn main_with(
         return init::run(&init_args, out, err);
     }
 
+    // PATH-shim support (see `path_shim`): when a shim on PATH invoked us,
+    // it exported BRIEF_SHIM_DIR to its own directory. Spawning `program`
+    // through a plain `Command::new` would resolve it straight back to
+    // that same shim and loop forever, so resolve against PATH with the
+    // shim dir removed and spawn the resolved absolute path instead. When
+    // BRIEF_SHIM_DIR is unset, `resolve_spawn` returns `program` and `None`
+    // unchanged — this path is then identical to before the feature
+    // existed.
+    let shim_dir = std::env::var_os(path_shim::BRIEF_SHIM_DIR);
+    let path_var = std::env::var_os("PATH");
+    let (spawn_program, reduced_path) =
+        path_shim::resolve_spawn(&program, shim_dir.as_deref(), path_var.as_deref());
+
     let forwarded = &post_program[1..];
-    let mut cmd = Command::new(&program);
+    let mut cmd = Command::new(&spawn_program);
     cmd.args(forwarded);
+    if let Some(reduced) = &reduced_path {
+        // Same reduced PATH for the child: a wrapped `cargo` that itself
+        // spawns `git` gets the real `git`, never another shim.
+        cmd.env("PATH", reduced);
+    }
 
     if is_fold_target(&program) {
         dispatch_target(
