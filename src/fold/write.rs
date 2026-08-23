@@ -16,6 +16,12 @@ use crate::private_fs::{create_private_dir, open_private};
 use super::rotate::cleanup_old_files;
 use super::slug::sanitize_slug;
 
+/// How many suffixed names to try before giving up on claiming a fold
+/// file. Attempt 0 is the unsuffixed name; in practice a collision needs
+/// two folds inside the same second, so this is only ever reached under
+/// pathological concurrency.
+const MAX_NAME_ATTEMPTS: u32 = 10_000;
+
 /// Creates the parent as its own step, otherwise `create_dir_all` leaves
 /// the data root at the umask as an intermediate.
 fn create_fold_dir(fold_dir: &Path) -> io::Result<()> {
@@ -44,18 +50,40 @@ pub(crate) fn open_fold_file(command_slug: &str, fold_dir: &Path) -> io::Result<
         .duration_since(UNIX_EPOCH)
         .map_err(io::Error::other)?
         .as_secs();
-    let filename = format!("{epoch}_{slug}.log");
-    let filepath = fold_dir.join(filename);
 
-    let file = open_private(
-        std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true),
-        &filepath,
-    )?;
+    // `create_new` (O_EXCL), never `create` + `truncate`. The timestamp is
+    // only second-granular, so two fold-target commands finishing in the
+    // same second produce the same name — and truncating would silently
+    // destroy the first invocation's output while its own
+    // `[full output: <path>]` hint still pointed at that path. The hint
+    // would then be a lie, which is the exact defect this tool exists to
+    // avoid. O_EXCL claims the name atomically, so a concurrent invocation
+    // cannot win the same one, and a numeric suffix is tried until a free
+    // name is found.
+    //
+    // The suffix goes before `.log` so the name still starts with the
+    // all-digit epoch that `rotate::cleanup_old_files` sorts on.
+    for attempt in 0..MAX_NAME_ATTEMPTS {
+        let filename = if attempt == 0 {
+            format!("{epoch}_{slug}.log")
+        } else {
+            format!("{epoch}_{slug}-{attempt}.log")
+        };
+        let filepath = fold_dir.join(filename);
+        match open_private(
+            std::fs::OpenOptions::new().write(true).create_new(true),
+            &filepath,
+        ) {
+            Ok(file) => return Ok((file, filepath)),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err),
+        }
+    }
 
-    Ok((file, filepath))
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "no unused fold file name available",
+    ))
 }
 
 /// Write the full, untruncated `raw` output to a fold file in `fold_dir`,
@@ -107,6 +135,44 @@ mod tests {
         );
         assert!(rest.ends_with(".log"));
         assert!(name.contains("my-cmd"));
+    }
+
+    #[test]
+    fn two_folds_in_the_same_second_get_distinct_files() {
+        // Regression: the name is only second-granular, so a loop of fold
+        // targets used to land on one name and each run truncated the last.
+        // The earlier run's `[full output: <path>]` hint then pointed at
+        // another command's bytes — a false recovery hint, the exact defect
+        // this tool exists to remove.
+        let tmpdir = tempfile::tempdir().unwrap();
+        let dir = tmpdir.path();
+
+        let first = write_fold_file(b"first output", "cat", dir, 20).unwrap();
+        let second = write_fold_file(b"second output", "cat", dir, 20).unwrap();
+        let third = write_fold_file(b"third output", "cat", dir, 20).unwrap();
+
+        assert_ne!(first, second);
+        assert_ne!(second, third);
+        assert_ne!(first, third);
+        assert_eq!(fs::read(&first).unwrap(), b"first output");
+        assert_eq!(fs::read(&second).unwrap(), b"second output");
+        assert_eq!(fs::read(&third).unwrap(), b"third output");
+    }
+
+    #[test]
+    fn suffixed_name_keeps_the_all_digit_epoch_prefix_rotation_sorts_on() {
+        let tmpdir = tempfile::tempdir().unwrap();
+        let dir = tmpdir.path();
+        write_fold_file(b"a", "cat", dir, 20).unwrap();
+        let second = write_fold_file(b"b", "cat", dir, 20).unwrap();
+
+        let name = second.file_name().unwrap().to_str().unwrap();
+        let (epoch_part, _) = name.split_once('_').expect("epoch_slug.log shape");
+        assert!(
+            epoch_part.chars().all(|c| c.is_ascii_digit()),
+            "suffix must not disturb the epoch prefix, got '{name}'"
+        );
+        assert!(name.ends_with(".log"));
     }
 
     #[test]
