@@ -38,18 +38,25 @@ impl Default for FoldConfig {
 
 impl FoldConfig {
     /// `Default`, layered with env var overrides: `BRIEF_THRESHOLD_TOKENS`
-    /// (usize) and `BRIEF_ENABLED` (`0`/`false` disables). `directory`
-    /// stays `None` — `paths::resolve_fold_dir` reads `BRIEF_FOLD_DIR`
-    /// itself, at the point the fold directory is actually needed.
+    /// (usize) and `BRIEF_ENABLED`/`BRIEF` (`0`/`false` disables).
+    /// `directory` stays `None` — `paths::resolve_fold_dir` reads
+    /// `BRIEF_FOLD_DIR` itself, at the point the fold directory is
+    /// actually needed.
     pub fn from_env() -> Self {
-        Self::from_env_with(&mut io::stderr(), |key| std::env::var(key).ok())
+        let mut cfg = Self::from_env_with(&mut io::stderr(), |key| std::env::var(key).ok());
+        if cfg.enabled && !super::roots::cwd_in_scope(&mut io::stderr()) {
+            cfg.enabled = false;
+        }
+        cfg
     }
 
     /// `from_env` with an explicit warning destination and an injected env
     /// lookup, so tests can drive the parsing/precedence logic as a pure
     /// function instead of mutating the real process environment (which is
     /// process-global state that would race other tests running in
-    /// parallel threads).
+    /// parallel threads). Does not apply per-path scoping — see
+    /// `roots::cwd_in_scope`, which needs the filesystem and the current
+    /// directory, not just env lookups.
     pub(crate) fn from_env_with(
         warn: &mut dyn Write,
         lookup: impl Fn(&str) -> Option<String>,
@@ -64,6 +71,25 @@ impl FoldConfig {
                         warn,
                         "brief: BRIEF_THRESHOLD_TOKENS={val:?} is not a valid number; \
                          using default ({DEFAULT_THRESHOLD_TOKENS})"
+                    );
+                }
+            }
+        }
+
+        // `BRIEF` is the short bypass alias for `BRIEF_ENABLED`: applied
+        // first so the explicit long form below wins when both are set.
+        // An unknown env var is inert on a machine without brief
+        // installed, so a script carrying `BRIEF=0` still works
+        // everywhere a flag form would not.
+        if let Some(val) = lookup("BRIEF") {
+            match val.as_str() {
+                "0" | "false" => cfg.enabled = false,
+                "1" | "true" => cfg.enabled = true,
+                _ => {
+                    let _ = writeln!(
+                        warn,
+                        "brief: BRIEF={val:?} is not \
+                         '0'/'false'/'1'/'true'; using default (enabled)"
                     );
                 }
             }
@@ -149,6 +175,39 @@ mod tests {
         let mut warn = Vec::new();
         let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF_ENABLED", "false")]));
         assert!(!cfg.enabled);
+        assert!(warn.is_empty());
+    }
+
+    #[test]
+    fn from_env_brief_zero_disables() {
+        let mut warn = Vec::new();
+        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF", "0")]));
+        assert!(!cfg.enabled);
+        assert!(warn.is_empty());
+    }
+
+    #[test]
+    fn from_env_brief_enabled_wins_over_brief_when_they_disagree() {
+        let mut warn = Vec::new();
+        let cfg = FoldConfig::from_env_with(
+            &mut warn,
+            env_map(&[("BRIEF", "0"), ("BRIEF_ENABLED", "1")]),
+        );
+        assert!(cfg.enabled, "BRIEF_ENABLED must win over the BRIEF alias");
+
+        let mut warn = Vec::new();
+        let cfg = FoldConfig::from_env_with(
+            &mut warn,
+            env_map(&[("BRIEF", "1"), ("BRIEF_ENABLED", "0")]),
+        );
+        assert!(!cfg.enabled, "BRIEF_ENABLED must win over the BRIEF alias");
+    }
+
+    #[test]
+    fn from_env_neither_brief_var_set_leaves_folding_on() {
+        let mut warn = Vec::new();
+        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[]));
+        assert!(cfg.enabled);
         assert!(warn.is_empty());
     }
 }

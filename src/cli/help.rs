@@ -24,7 +24,19 @@ until the command finishes — see the `runner` module doc for why.
 Environment overrides:
   BRIEF_THRESHOLD_TOKENS   token count above which output folds (default: 25000)
   BRIEF_ENABLED            0 or false disables folding entirely
+  BRIEF                    short alias for BRIEF_ENABLED; BRIEF_ENABLED wins
+                           when both are set
   BRIEF_FOLD_DIR           directory fold files are written to
+  BRIEF_ROOTS              colon-separated paths folding is scoped to
+                           (overrides the roots file; see below)
+
+Per-path scoping: brief folds everywhere by default. To scope it to one or
+more projects, list their absolute paths one per line in
+<config dir>/brief/roots (blank lines and #-comments are ignored); brief
+then folds only when the current directory is at or under a listed root.
+Outside every root, folding behaves exactly like BRIEF_ENABLED=0 — full
+passthrough, no fold file — but the invocation is still tracked, so
+`brief report` shows what scoping would have handled.
 
 brief needs no integration to be useful: prefixing any command with
 `brief` works from a shell, a script, or any coding agent that runs shell
