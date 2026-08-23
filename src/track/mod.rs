@@ -1,21 +1,21 @@
-//! Append-only invocation tracking: one audit row per `sigfold` run,
+//! Append-only invocation tracking: one audit row per `brief` run,
 //! recording raw bytes produced versus bytes that reached the caller for
 //! each stream. This is what makes a fold's savings claim falsifiable —
 //! without it, the only evidence of a fold's effect is the already-folded
 //! output. An internal side effect of running a command, like fold-file
 //! rotation — not part of the public folding API.
 //!
-//! `reads_fold` is the one re-read signal sigfold can observe honestly:
+//! `reads_fold` is the one re-read signal brief can observe honestly:
 //! whether this invocation's own argv resolves into the fold directory.
-//! A read that bypasses sigfold entirely (a shell `cat` on a fold file run
-//! outside sigfold) is not observable here, so `reads_fold` undercounts
+//! A read that bypasses brief entirely (a shell `cat` on a fold file run
+//! outside brief) is not observable here, so `reads_fold` undercounts
 //! re-reads rather than over-claiming them.
 //!
 //! Only the fold-target programs (`crate::cli`'s target list) are captured,
 //! so only they produce a row. Everything else runs with fully inherited
-//! stdio, which sigfold never observes and therefore cannot measure. That
+//! stdio, which brief never observes and therefore cannot measure. That
 //! makes the sum of `*_raw_bytes` over every row the denominator for
-//! "output sigfold handled", not "output the machine produced" — a report
+//! "output brief handled", not "output the machine produced" — a report
 //! built on these rows must not claim the latter.
 //!
 //! The tracking file is hard-bounded at `TrackConfig::compact_trigger_bytes`

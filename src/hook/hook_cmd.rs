@@ -1,4 +1,4 @@
-//! Entry point for `sigfold hook`, wired from `cli::dispatch`. No flags:
+//! Entry point for `brief hook`, wired from `cli::dispatch`. No flags:
 //! the hook protocol is stdin-in, stdout-out, and every failure mode
 //! resolves to "leave the command alone" — see `crate::hook`'s module doc.
 
@@ -61,11 +61,11 @@ mod tests {
         let (code, out) = run_on(json);
         assert_eq!(code, 0);
         assert!(out.contains(r#""hookEventName":"PreToolUse""#));
-        assert!(out.contains(r#""command":"sigfold grep foo src/""#));
+        assert!(out.contains(r#""command":"brief grep foo src/""#));
         assert!(out.contains(r#""description":"search""#));
         assert!(
             !out.contains("permissionDecision"),
-            "sigfold must never assert a permission decision"
+            "brief must never assert a permission decision"
         );
     }
 
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn already_wrapped_command_is_idempotent() {
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"sigfold grep foo src/"}}"#;
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"brief grep foo src/"}}"#;
         let (code, out) = run_on(json);
         assert_eq!(code, 0);
         assert!(out.is_empty());
@@ -107,6 +107,6 @@ mod tests {
         assert_eq!(code, 0);
         assert!(out.contains(r#""timeout":5"#));
         assert!(out.contains(r#""run_in_background":false"#));
-        assert!(out.contains(r#""command":"sigfold cat file.txt""#));
+        assert!(out.contains(r#""command":"brief cat file.txt""#));
     }
 }

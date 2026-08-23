@@ -1,9 +1,9 @@
 [package]
-name = "sigfold"
+name = "brief"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "Gate large command output behind a token threshold: fold to a head/tail summary on disk, pass small output through untouched"
+description = "Gate large command output behind a token threshold: brief a head/tail summary to the caller, with the full output kept on disk"
 
 [dependencies]
 dirs = "6"

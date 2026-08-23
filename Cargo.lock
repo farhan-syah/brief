@@ -18,6 +18,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "brief"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "libc",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -211,16 +221,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
-]
-
-[[package]]
-name = "sigfold"
-version = "0.1.0"
-dependencies = [
- "dirs",
- "libc",
- "sha2",
- "tempfile",
 ]
 
 [[package]]

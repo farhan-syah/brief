@@ -1,9 +1,9 @@
-//! Passthrough path for every command sigfold does not fold: stdin, stdout,
+//! Passthrough path for every command brief does not fold: stdin, stdout,
 //! and stderr are fully inherited from this process and the child's status
 //! is translated and returned unchanged. This is not `run()` with folding
 //! disabled — that would still pipe both streams and hold them until the
 //! child exits, breaking tty detection, colour, and incremental progress
-//! output for every one of the ~99.56% of commands sigfold should never
+//! output for every one of the ~99.56% of commands brief should never
 //! observably touch.
 
 use std::ffi::OsStr;
@@ -39,7 +39,7 @@ pub(crate) fn exit_code_for_spawn_error(
         io::ErrorKind::PermissionDenied => 126,
         _ => 126,
     };
-    let _ = writeln!(err, "sigfold: {}: {io_err}", program.to_string_lossy());
+    let _ = writeln!(err, "brief: {}: {io_err}", program.to_string_lossy());
     code
 }
 

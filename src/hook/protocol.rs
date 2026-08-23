@@ -299,10 +299,10 @@ mod tests {
     fn splice_replaces_only_the_command_value() {
         let tool_input =
             r#"{"command":"grep foo","description":"a desc, with a comma","timeout":5}"#;
-        let updated = splice_command(tool_input, "sigfold grep foo").expect("splice must succeed");
+        let updated = splice_command(tool_input, "brief grep foo").expect("splice must succeed");
         assert_eq!(
             updated,
-            r#"{"command":"sigfold grep foo","description":"a desc, with a comma","timeout":5}"#
+            r#"{"command":"brief grep foo","description":"a desc, with a comma","timeout":5}"#
         );
     }
 
@@ -310,19 +310,19 @@ mod tests {
     fn splice_preserves_field_order_and_unknown_fields() {
         let tool_input =
             r#"{"description":"d","command":"grep foo","weird_field":{"nested":[1,2,3]}}"#;
-        let updated = splice_command(tool_input, "sigfold grep foo").unwrap();
+        let updated = splice_command(tool_input, "brief grep foo").unwrap();
         assert_eq!(
             updated,
-            r#"{"description":"d","command":"sigfold grep foo","weird_field":{"nested":[1,2,3]}}"#
+            r#"{"description":"d","command":"brief grep foo","weird_field":{"nested":[1,2,3]}}"#
         );
     }
 
     #[test]
     fn build_output_shape() {
-        let out = build_output(r#"{"command":"sigfold grep foo"}"#);
+        let out = build_output(r#"{"command":"brief grep foo"}"#);
         assert_eq!(
             out,
-            "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"updatedInput\":{\"command\":\"sigfold grep foo\"}}}\n"
+            "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"updatedInput\":{\"command\":\"brief grep foo\"}}}\n"
         );
     }
 }

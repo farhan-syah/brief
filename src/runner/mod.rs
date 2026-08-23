@@ -9,8 +9,8 @@
 //! head/tail summary is printed.
 //!
 //! Folding never depends on whether the destination is a terminal:
-//! `sigfold cmd > file.txt` behaves identically to `sigfold cmd | cat`.
-//! Invoking sigfold is the opt-in; there is no isatty heuristic.
+//! `brief cmd > file.txt` behaves identically to `brief cmd | cat`.
+//! Invoking brief is the opt-in; there is no isatty heuristic.
 //!
 //! # Consequence: output appears when the child exits
 //!

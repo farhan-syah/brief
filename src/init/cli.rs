@@ -1,4 +1,4 @@
-//! `sigfold init`'s own argv parsing and entry point — installs or
+//! `brief init`'s own argv parsing and entry point — installs or
 //! uninstalls the PreToolUse hook in the user's Claude Code settings.json.
 //! Manual flag parsing, matching `report::cli`'s style (no dependency).
 
@@ -6,14 +6,14 @@ use std::io::Write;
 
 use super::fs_ops;
 
-const USAGE: &str = "usage: sigfold init [--dry-run] [--uninstall]\n";
+const USAGE: &str = "usage: brief init [--dry-run] [--uninstall]\n";
 
 const HELP: &str = "\
-sigfold init — install sigfold's PreToolUse hook in Claude Code's settings.json.
+brief init — install brief's PreToolUse hook in Claude Code's settings.json.
 
-The hook rewrites plain grep/cat/find/rg Bash calls to go through sigfold,
+The hook rewrites plain grep/cat/find/rg Bash calls to go through brief,
 so their output is gated behind the same token threshold as a direct
-`sigfold grep ...` invocation. It never changes what a command means: any
+`brief grep ...` invocation. It never changes what a command means: any
 command it cannot confidently classify is left alone untouched.
 
 Idempotent: running this again when the hook is already installed does
@@ -22,16 +22,16 @@ settings.json.bak first, and is written atomically.
 
 Flags:
   --dry-run     print what would change; touch nothing
-  --uninstall   remove exactly sigfold's own hook entry; absent is a no-op
+  --uninstall   remove exactly brief's own hook entry; absent is a no-op
   --help, -h    this text
 
-Usage: sigfold init [--dry-run] [--uninstall]
+Usage: brief init [--dry-run] [--uninstall]
 
 To run a program literally named \"init\", invoke it by path:
-sigfold ./init
+brief ./init
 ";
 
-/// Entry point wired from `cli::dispatch` for `sigfold init [...]`.
+/// Entry point wired from `cli::dispatch` for `brief init [...]`.
 /// `args` is the argv following the literal `init` token.
 pub(crate) fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     run_with(args, out, err, dirs::home_dir().as_deref())

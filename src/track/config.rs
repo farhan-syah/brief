@@ -29,8 +29,8 @@ pub struct TrackConfig {
     /// When false, `track::append` is always a no-op.
     pub enabled: bool,
     /// Tracking file override. `None` resolves to
-    /// `dirs::data_local_dir()/sigfold/tracking.jsonl`, or the
-    /// `SIGFOLD_TRACK_FILE` env var if set (env wins over this field).
+    /// `dirs::data_local_dir()/brief/tracking.jsonl`, or the
+    /// `BRIEF_TRACK_FILE` env var if set (env wins over this field).
     pub path: Option<PathBuf>,
     /// Rows older than this many days are dropped on compaction.
     pub retention_days: u64,
@@ -54,9 +54,9 @@ impl Default for TrackConfig {
 }
 
 impl TrackConfig {
-    /// `Default`, layered with an env var override: `SIGFOLD_TRACK_ENABLED`
+    /// `Default`, layered with an env var override: `BRIEF_TRACK_ENABLED`
     /// (`0`/`false` disables). `path` stays `None` —
-    /// `paths::resolve_track_path` reads `SIGFOLD_TRACK_FILE` itself, at
+    /// `paths::resolve_track_path` reads `BRIEF_TRACK_FILE` itself, at
     /// the point the tracking file is actually needed.
     pub fn from_env() -> Self {
         Self::from_env_with(&mut io::stderr(), |key| std::env::var(key).ok())
@@ -73,14 +73,14 @@ impl TrackConfig {
     ) -> Self {
         let mut cfg = Self::default();
 
-        if let Some(val) = lookup("SIGFOLD_TRACK_ENABLED") {
+        if let Some(val) = lookup("BRIEF_TRACK_ENABLED") {
             match val.as_str() {
                 "0" | "false" => cfg.enabled = false,
                 "1" | "true" => cfg.enabled = true,
                 _ => {
                     let _ = writeln!(
                         warn,
-                        "sigfold: SIGFOLD_TRACK_ENABLED={val:?} is not \
+                        "brief: BRIEF_TRACK_ENABLED={val:?} is not \
                          '0'/'false'/'1'/'true'; using default (enabled)"
                     );
                 }
@@ -129,7 +129,7 @@ mod tests {
     fn from_env_disabled_false_disables() {
         let mut warn = Vec::new();
         let cfg =
-            TrackConfig::from_env_with(&mut warn, env_map(&[("SIGFOLD_TRACK_ENABLED", "false")]));
+            TrackConfig::from_env_with(&mut warn, env_map(&[("BRIEF_TRACK_ENABLED", "false")]));
         assert!(!cfg.enabled);
         assert!(warn.is_empty());
     }
@@ -139,14 +139,14 @@ mod tests {
         let mut warn = Vec::new();
         let cfg = TrackConfig::from_env_with(
             &mut warn,
-            env_map(&[("SIGFOLD_TRACK_ENABLED", "not-a-bool")]),
+            env_map(&[("BRIEF_TRACK_ENABLED", "not-a-bool")]),
         );
         assert!(
             cfg.enabled,
             "a bad env var must never break the command; it falls back"
         );
         let warning = String::from_utf8(warn).unwrap();
-        assert!(warning.contains("SIGFOLD_TRACK_ENABLED"));
+        assert!(warning.contains("BRIEF_TRACK_ENABLED"));
         assert!(warning.contains("not-a-bool"));
     }
 }

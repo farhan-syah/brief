@@ -1,4 +1,4 @@
-//! `sigfold init`: install or uninstall sigfold's PreToolUse hook in the
+//! `brief init`: install or uninstall brief's PreToolUse hook in the
 //! user's Claude Code settings.json. Wiring only — see `cli` for argv
 //! parsing, `fs_ops` for home-directory resolution, backup, atomic write,
 //! and `--dry-run` gating, and `settings_edit` for the pure text

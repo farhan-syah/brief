@@ -1,5 +1,5 @@
 //! Ported from rtk's `core::utils` (create_private_dir / open_private /
-//! set_owner_only only — the rest of utils.rs is out of scope for sigfold).
+//! set_owner_only only — the rest of utils.rs is out of scope for brief).
 //! Source: reference/rtk/src/core/utils.rs
 
 use std::fs;

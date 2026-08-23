@@ -31,7 +31,7 @@ use crate::track::json_string;
 
 /// The exact hook-entry command this module ever installs, finds, or
 /// removes. Idempotency and uninstall both key off this exact string.
-const HOOK_COMMAND: &str = "sigfold hook";
+const HOOK_COMMAND: &str = "brief hook";
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct UnrecognizedShape;
@@ -58,7 +58,7 @@ pub(crate) fn hook_entry_template() -> String {
 }
 
 /// `true` if a `PreToolUse` hook entry whose command is exactly
-/// `sigfold hook` is already present anywhere in `settings`.
+/// `brief hook` is already present anywhere in `settings`.
 #[cfg(test)]
 pub(crate) fn find_hook_entry(settings: &str) -> Result<bool, UnrecognizedShape> {
     match locate(settings)? {
@@ -109,7 +109,7 @@ pub(crate) fn insert_hook_entry(settings: &str) -> Result<InsertOutcome, Unrecog
     }
 }
 
-/// Remove exactly the hook-entry object whose command is `sigfold hook`
+/// Remove exactly the hook-entry object whose command is `brief hook`
 /// from whichever matcher group's `hooks` array holds it. Every other
 /// hook, matcher group, and surrounding structure is left untouched —
 /// including a now-empty `"hooks": []` on that matcher group, which this
@@ -221,7 +221,7 @@ fn locate(settings: &str) -> Result<Location<'_>, UnrecognizedShape> {
 }
 
 /// Scan every matcher group in a `PreToolUse` array's `[...]` text for a
-/// hook entry whose command is exactly `sigfold hook`.
+/// hook entry whose command is exactly `brief hook`.
 fn array_contains_hook_command(array_value: &str) -> Result<bool, UnrecognizedShape> {
     let inner = &array_value[1..array_value.len() - 1];
     for group in split_top_level_commas(inner) {
@@ -439,7 +439,7 @@ mod tests {
         assert!(new.contains("\"hooks\""));
         assert!(new.contains("\"PreToolUse\""));
         assert!(new.contains("\"matcher\": \"Bash\""));
-        assert!(new.contains("\"command\": \"sigfold hook\""));
+        assert!(new.contains("\"command\": \"brief hook\""));
         assert!(find_hook_entry(&new).unwrap());
     }
 
@@ -487,7 +487,7 @@ mod tests {
 
     #[test]
     fn already_present_is_reported_and_nothing_changes() {
-        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"sigfold hook"}]}]}}"#;
+        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"brief hook"}]}]}}"#;
         match insert_hook_entry(settings).unwrap() {
             InsertOutcome::AlreadyPresent => {}
             InsertOutcome::Inserted(_) => panic!("must be idempotent"),
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn present_among_other_matcher_groups_is_still_detected() {
-        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"lint.sh"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"sigfold hook"}]}]}}"#;
+        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"lint.sh"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"brief hook"}]}]}}"#;
         assert!(find_hook_entry(settings).unwrap());
         match insert_hook_entry(settings).unwrap() {
             InsertOutcome::AlreadyPresent => {}
@@ -539,7 +539,7 @@ mod tests {
             !removed.contains("matcher"),
             "the emptied matcher group must be dropped, got: {removed}"
         );
-        assert!(!removed.contains("sigfold hook"));
+        assert!(!removed.contains("brief hook"));
 
         // And the cycle must converge: installing again yields exactly the
         // same text as the first install, never an accumulation.
@@ -552,12 +552,12 @@ mod tests {
 
     #[test]
     fn removing_ours_keeps_a_foreign_hook_in_the_same_group() {
-        let settings = "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\"matcher\": \"Bash\", \"hooks\": [\n        {\"type\": \"command\", \"command\": \"sigfold hook\"},\n        {\"type\": \"command\", \"command\": \"their-tool\"}\n      ]}\n    ]\n  }\n}";
+        let settings = "{\n  \"hooks\": {\n    \"PreToolUse\": [\n      {\"matcher\": \"Bash\", \"hooks\": [\n        {\"type\": \"command\", \"command\": \"brief hook\"},\n        {\"type\": \"command\", \"command\": \"their-tool\"}\n      ]}\n    ]\n  }\n}";
         let removed = match remove_hook_entry(settings).unwrap() {
             RemoveOutcome::Removed(text) => text,
             RemoveOutcome::NotPresent => panic!("it is present"),
         };
-        assert!(!removed.contains("sigfold hook"));
+        assert!(!removed.contains("brief hook"));
         assert!(
             removed.contains("their-tool"),
             "a foreign hook sharing the group must survive"
@@ -569,33 +569,33 @@ mod tests {
     }
 
     #[test]
-    fn remove_deletes_only_the_sigfold_entry() {
-        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"lint.sh"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"sigfold hook"}]}]}}"#;
+    fn remove_deletes_only_the_brief_entry() {
+        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"lint.sh"}]},{"matcher":"Bash","hooks":[{"type":"command","command":"brief hook"}]}]}}"#;
         let RemoveOutcome::Removed(new) = remove_hook_entry(settings).unwrap() else {
             panic!("expected Removed");
         };
         assert!(new.contains("lint.sh"), "other matcher group must survive");
-        assert!(!new.contains("sigfold hook"));
+        assert!(!new.contains("brief hook"));
         assert!(!find_hook_entry(&new).unwrap());
     }
 
     #[test]
     fn remove_leaves_other_hooks_in_the_same_matcher_group_untouched() {
-        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"lint.sh"},{"type":"command","command":"sigfold hook"}]}]}}"#;
+        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"lint.sh"},{"type":"command","command":"brief hook"}]}]}}"#;
         let RemoveOutcome::Removed(new) = remove_hook_entry(settings).unwrap() else {
             panic!("expected Removed");
         };
         assert!(new.contains("lint.sh"));
-        assert!(!new.contains("sigfold hook"));
+        assert!(!new.contains("brief hook"));
     }
 
     #[test]
     fn remove_prunes_the_matcher_group_it_empties() {
-        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"sigfold hook"}]}]}}"#;
+        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"brief hook"}]}]}}"#;
         let RemoveOutcome::Removed(new) = remove_hook_entry(settings).unwrap() else {
             panic!("expected Removed");
         };
-        assert!(!new.contains("sigfold hook"));
+        assert!(!new.contains("brief hook"));
         assert!(
             !new.contains(r#""matcher":"Bash""#),
             "an emptied group must not be left behind as a husk, got: {new}"
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn comma_inside_a_string_value_never_splits_a_field() {
-        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"sigfold hook","description":"a, b, c"}]}]}}"#;
+        let settings = r#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"brief hook","description":"a, b, c"}]}]}}"#;
         assert!(find_hook_entry(settings).unwrap());
         let RemoveOutcome::Removed(new) = remove_hook_entry(settings).unwrap() else {
             panic!("expected Removed");
@@ -629,7 +629,7 @@ mod tests {
         // The point of the fixture is the commas inside `description`: a
         // splitter that ignored quoting would tear that field apart and
         // fail to match the command beside it.
-        assert!(!new.contains("sigfold hook"));
+        assert!(!new.contains("brief hook"));
         assert!(!new.contains("a, b, c"));
     }
 }

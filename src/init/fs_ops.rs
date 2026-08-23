@@ -1,4 +1,4 @@
-//! Filesystem side of `sigfold init`: locating settings.json under an
+//! Filesystem side of `brief init`: locating settings.json under an
 //! injected home directory, backup-before-write, atomic write, and
 //! `--dry-run` gating. No JSON logic here — that's `settings_edit`, kept
 //! pure and filesystem-free so it stays unit-testable against literal
@@ -11,7 +11,7 @@ use std::path::Path;
 use super::settings_edit::{InsertOutcome, RemoveOutcome, hook_entry_template};
 use super::settings_edit::{insert_hook_entry, remove_hook_entry};
 
-/// Run `sigfold init`. `home_dir` is injected so tests can point this at a
+/// Run `brief init`. `home_dir` is injected so tests can point this at a
 /// tempdir instead of the real `~/.claude` — see the module doc comment
 /// on `crate::init` for why that boundary is not optional here.
 pub(crate) fn run_with(
@@ -22,7 +22,7 @@ pub(crate) fn run_with(
     err: &mut dyn Write,
 ) -> i32 {
     let Some(home_dir) = home_dir else {
-        let _ = writeln!(err, "sigfold init: could not determine the home directory");
+        let _ = writeln!(err, "brief init: could not determine the home directory");
         return 1;
     };
     let settings_path = home_dir.join(".claude").join("settings.json");
@@ -33,7 +33,7 @@ pub(crate) fn run_with(
         Err(e) => {
             let _ = writeln!(
                 err,
-                "sigfold init: could not read {}: {e}",
+                "brief init: could not read {}: {e}",
                 settings_path.display()
             );
             return 1;
@@ -59,7 +59,7 @@ fn run_install(
         Ok(InsertOutcome::AlreadyPresent) => {
             let _ = writeln!(
                 out,
-                "sigfold hook already installed in {}; nothing to do",
+                "brief hook already installed in {}; nothing to do",
                 settings_path.display()
             );
             0
@@ -68,7 +68,7 @@ fn run_install(
             if dry_run {
                 let _ = writeln!(
                     out,
-                    "Would install the sigfold PreToolUse hook in {}:\n",
+                    "Would install the brief PreToolUse hook in {}:\n",
                     settings_path.display()
                 );
                 let _ = writeln!(out, "{new_contents}");
@@ -78,13 +78,13 @@ fn run_install(
                 Ok(()) => {
                     let _ = writeln!(
                         out,
-                        "Installed the sigfold PreToolUse hook in {}",
+                        "Installed the brief PreToolUse hook in {}",
                         settings_path.display()
                     );
                     0
                 }
                 Err(e) => {
-                    let _ = writeln!(err, "sigfold init: {e}");
+                    let _ = writeln!(err, "brief init: {e}");
                     1
                 }
             }
@@ -92,7 +92,7 @@ fn run_install(
         Err(_unrecognized) => {
             let _ = writeln!(
                 err,
-                "sigfold init: {} isn't a shape I confidently recognize, so I won't guess at editing it.\n\
+                "brief init: {} isn't a shape I confidently recognize, so I won't guess at editing it.\n\
                  Add this entry to your `hooks.PreToolUse` array by hand:\n",
                 settings_path.display()
             );
@@ -114,7 +114,7 @@ fn run_uninstall(
         Ok(RemoveOutcome::NotPresent) => {
             let _ = writeln!(
                 out,
-                "sigfold hook not installed in {}; nothing to do",
+                "brief hook not installed in {}; nothing to do",
                 settings_path.display()
             );
             0
@@ -123,7 +123,7 @@ fn run_uninstall(
             if dry_run {
                 let _ = writeln!(
                     out,
-                    "Would remove the sigfold PreToolUse hook from {}:\n",
+                    "Would remove the brief PreToolUse hook from {}:\n",
                     settings_path.display()
                 );
                 let _ = writeln!(out, "{new_contents}");
@@ -133,13 +133,13 @@ fn run_uninstall(
                 Ok(()) => {
                     let _ = writeln!(
                         out,
-                        "Removed the sigfold PreToolUse hook from {}",
+                        "Removed the brief PreToolUse hook from {}",
                         settings_path.display()
                     );
                     0
                 }
                 Err(e) => {
-                    let _ = writeln!(err, "sigfold init: {e}");
+                    let _ = writeln!(err, "brief init: {e}");
                     1
                 }
             }
@@ -147,8 +147,8 @@ fn run_uninstall(
         Err(_unrecognized) => {
             let _ = writeln!(
                 err,
-                "sigfold init --uninstall: {} isn't a shape I confidently recognize, \
-                 so I won't guess at editing it. Remove the sigfold hook entry from \
+                "brief init --uninstall: {} isn't a shape I confidently recognize, \
+                 so I won't guess at editing it. Remove the brief hook entry from \
                  `hooks.PreToolUse` by hand.",
                 settings_path.display()
             );
@@ -180,7 +180,7 @@ fn write_settings(
         fs::write(&backup_path, old_contents)?;
     }
 
-    let tmp_path = dir.join(format!(".sigfold-settings-{}.tmp", std::process::id()));
+    let tmp_path = dir.join(format!(".brief-settings-{}.tmp", std::process::id()));
     if let Err(e) = fs::write(&tmp_path, new_contents) {
         let _ = fs::remove_file(&tmp_path);
         return Err(e);
@@ -225,7 +225,7 @@ mod tests {
         assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&err));
 
         let written = fs::read_to_string(settings_path(tmp.path())).unwrap();
-        assert!(written.contains("sigfold hook"));
+        assert!(written.contains("brief hook"));
         assert!(find_hook_entry(&written).unwrap());
 
         // No pre-existing file: nothing to back up.
@@ -302,7 +302,7 @@ mod tests {
         assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&err));
 
         let written = fs::read_to_string(settings_path(tmp.path())).unwrap();
-        assert!(!written.contains("sigfold hook"));
+        assert!(!written.contains("brief hook"));
     }
 
     #[test]
@@ -330,7 +330,7 @@ mod tests {
         assert_eq!(code, 1);
         let printed = String::from_utf8_lossy(&err);
         assert!(printed.contains("\"matcher\": \"Bash\""));
-        assert!(printed.contains("sigfold hook"));
+        assert!(printed.contains("brief hook"));
 
         // Refused: the file on disk must be exactly what it was before.
         let untouched = fs::read_to_string(settings_path(tmp.path())).unwrap();

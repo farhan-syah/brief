@@ -20,7 +20,7 @@ pub struct FoldConfig {
     /// out first, the file just written always survives.
     pub max_files: usize,
     /// Fold directory override. `None` resolves to
-    /// `dirs::data_local_dir()/sigfold/folds`, or the `SIGFOLD_FOLD_DIR`
+    /// `dirs::data_local_dir()/brief/folds`, or the `BRIEF_FOLD_DIR`
     /// env var if set (env wins over this field).
     pub directory: Option<PathBuf>,
 }
@@ -37,9 +37,9 @@ impl Default for FoldConfig {
 }
 
 impl FoldConfig {
-    /// `Default`, layered with env var overrides: `SIGFOLD_THRESHOLD_TOKENS`
-    /// (usize) and `SIGFOLD_ENABLED` (`0`/`false` disables). `directory`
-    /// stays `None` — `paths::resolve_fold_dir` reads `SIGFOLD_FOLD_DIR`
+    /// `Default`, layered with env var overrides: `BRIEF_THRESHOLD_TOKENS`
+    /// (usize) and `BRIEF_ENABLED` (`0`/`false` disables). `directory`
+    /// stays `None` — `paths::resolve_fold_dir` reads `BRIEF_FOLD_DIR`
     /// itself, at the point the fold directory is actually needed.
     pub fn from_env() -> Self {
         Self::from_env_with(&mut io::stderr(), |key| std::env::var(key).ok())
@@ -56,27 +56,27 @@ impl FoldConfig {
     ) -> Self {
         let mut cfg = Self::default();
 
-        if let Some(val) = lookup("SIGFOLD_THRESHOLD_TOKENS") {
+        if let Some(val) = lookup("BRIEF_THRESHOLD_TOKENS") {
             match val.parse::<usize>() {
                 Ok(n) => cfg.threshold_tokens = n,
                 Err(_) => {
                     let _ = writeln!(
                         warn,
-                        "sigfold: SIGFOLD_THRESHOLD_TOKENS={val:?} is not a valid number; \
+                        "brief: BRIEF_THRESHOLD_TOKENS={val:?} is not a valid number; \
                          using default ({DEFAULT_THRESHOLD_TOKENS})"
                     );
                 }
             }
         }
 
-        if let Some(val) = lookup("SIGFOLD_ENABLED") {
+        if let Some(val) = lookup("BRIEF_ENABLED") {
             match val.as_str() {
                 "0" | "false" => cfg.enabled = false,
                 "1" | "true" => cfg.enabled = true,
                 _ => {
                     let _ = writeln!(
                         warn,
-                        "sigfold: SIGFOLD_ENABLED={val:?} is not \
+                        "brief: BRIEF_ENABLED={val:?} is not \
                          '0'/'false'/'1'/'true'; using default (enabled)"
                     );
                 }
@@ -123,7 +123,7 @@ mod tests {
     fn from_env_valid_threshold_override_applies() {
         let mut warn = Vec::new();
         let cfg =
-            FoldConfig::from_env_with(&mut warn, env_map(&[("SIGFOLD_THRESHOLD_TOKENS", "42")]));
+            FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF_THRESHOLD_TOKENS", "42")]));
         assert_eq!(cfg.threshold_tokens, 42);
         assert!(warn.is_empty());
     }
@@ -133,21 +133,21 @@ mod tests {
         let mut warn = Vec::new();
         let cfg = FoldConfig::from_env_with(
             &mut warn,
-            env_map(&[("SIGFOLD_THRESHOLD_TOKENS", "not-a-number")]),
+            env_map(&[("BRIEF_THRESHOLD_TOKENS", "not-a-number")]),
         );
         assert_eq!(
             cfg.threshold_tokens, DEFAULT_THRESHOLD_TOKENS,
             "a bad env var must never break the command; it falls back"
         );
         let warning = String::from_utf8(warn).unwrap();
-        assert!(warning.contains("SIGFOLD_THRESHOLD_TOKENS"));
+        assert!(warning.contains("BRIEF_THRESHOLD_TOKENS"));
         assert!(warning.contains("not-a-number"));
     }
 
     #[test]
     fn from_env_enabled_false_disables() {
         let mut warn = Vec::new();
-        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("SIGFOLD_ENABLED", "false")]));
+        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF_ENABLED", "false")]));
         assert!(!cfg.enabled);
         assert!(warn.is_empty());
     }

@@ -217,7 +217,7 @@ mod tests {
             stdout_raw_bytes: 1000,
             stdout_kept_bytes: 200,
             stdout_folded: true,
-            stdout_path: Some("/tmp/sigfold/folds/1_grep.log".to_string()),
+            stdout_path: Some("/tmp/brief/folds/1_grep.log".to_string()),
             stderr_raw_bytes: 5,
             stderr_kept_bytes: 5,
             stderr_folded: false,
