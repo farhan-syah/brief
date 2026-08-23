@@ -5,8 +5,9 @@ use std::fmt::Write as _;
 use super::aggregate::{ReportBody, ReportSummary};
 // Short forms: each is attached directly to the number it qualifies rather
 // than printed as a detached block, so it survives excerpting of that line.
-use super::caveats::{LOWER_BOUND_SHORT as LOWER_BOUND_CAVEAT, SCOPE_SHORT as SCOPE_NOTE};
+use super::caveats::{LOWER_BOUND_SHORT as LOWER_BOUND_CAVEAT, scope_short};
 use super::load::LoadResult;
+use crate::targets::slash_list;
 use crate::thousands::with_thousands_separator as sep;
 
 /// `n` and the correctly pluralized `noun` (`1 call`, `2 calls`).
@@ -35,7 +36,8 @@ pub(crate) fn render(
         ReportBody::NoData => {
             let _ = writeln!(
                 s,
-                "No tracking data yet — brief has not recorded any grep/cat/find/rg calls."
+                "No tracking data yet — brief has not recorded any {} calls.",
+                slash_list()
             );
         }
         ReportBody::AllMalformed => {
@@ -105,8 +107,9 @@ fn render_header(s: &mut String, window_label: &str, project: bool, load: &LoadR
 fn render_data(s: &mut String, summary: &ReportSummary) {
     let _ = writeln!(
         s,
-        "Handled totals ({} — {SCOPE_NOTE}):",
-        plural(summary.row_count, "call")
+        "Handled totals ({} — {}):",
+        plural(summary.row_count, "call"),
+        scope_short()
     );
     let _ = writeln!(
         s,
@@ -249,10 +252,10 @@ mod tests {
         let rows = vec![row("grep", 10, 10)];
         let l = load(1, 0, rows.clone());
         let text = render("all time", false, &l, &ReportBody::Data(aggregate(&rows)));
-        assert!(text.contains(SCOPE_NOTE));
+        assert!(text.contains(&scope_short()));
         assert!(text.contains(LOWER_BOUND_CAVEAT));
         assert!(
-            text.contains(&format!("Handled totals (1 call — {SCOPE_NOTE}):")),
+            text.contains(&format!("Handled totals (1 call — {}):", scope_short())),
             "scope note must be attached to the Handled totals line: {text}"
         );
     }

@@ -2,18 +2,7 @@
 //! (see `dispatch::main_with`) — never when a fold target's own `--help`
 //! reaches it, since that argv is forwarded to the child untouched.
 
-use super::dispatch::TARGETS;
-
-/// Oxford-comma list of `TARGETS`, e.g. "grep, cat, find, and rg" — built
-/// from the same array `dispatch` matches `argv[1]` against, so the two can
-/// never drift apart.
-fn targets_sentence() -> String {
-    match TARGETS.split_last() {
-        None => String::new(),
-        Some((last, [])) => (*last).to_string(),
-        Some((last, rest)) => format!("{}, and {last}", rest.join(", ")),
-    }
-}
+use crate::targets::{oxford_list, slash_list};
 
 /// Text for `brief --help` / `brief -h`. Order is fixed: what brief
 /// folds, the size gate, the recovery guarantee, the env overrides, usage.
@@ -28,6 +17,10 @@ Below that threshold, output passes through byte-for-byte, unchanged.
 Folded output is never truncated: the full output is always written to disk,
 and the printed hint is the exact command to read the rest.
 
+brief holds a command's output until it exits before deciding whether to
+fold it, so a long `cargo build` or `git log` on a huge repo prints nothing
+until the command finishes — see the `runner` module doc for why.
+
 Environment overrides:
   BRIEF_THRESHOLD_TOKENS   token count above which output folds (default: 25000)
   BRIEF_ENABLED            0 or false disables folding entirely
@@ -37,7 +30,7 @@ Environment overrides:
 summary of the tracking data brief has recorded; see `brief report --help`.
 
 `hook` is reserved as argv[1] for `brief hook`, a Claude Code PreToolUse
-hook that rewrites plain grep/cat/find/rg Bash calls to go through brief,
+hook that rewrites plain {} Bash calls to go through brief,
 declining on anything it cannot confidently classify; see `brief init --help`
 to install it.
 
@@ -49,7 +42,8 @@ e.g. `brief ./hook`.
 
 Usage: brief <program> [args...]
 ",
-        targets_sentence()
+        oxford_list(),
+        slash_list()
     )
 }
 
@@ -63,17 +57,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn help_text_covers_targets_gate_recovery_env_usage_in_order() {
+    fn help_text_covers_targets_gate_recovery_cost_env_usage_in_order() {
         let text = help_text();
-        let targets = text.find("grep, cat, find, and rg").unwrap();
+        let targets = text.find(&oxford_list()).unwrap();
         let gate = text.find("25,000 tokens").unwrap();
         let recovery = text.find("never truncated").unwrap();
+        let cost = text.find("cargo build").unwrap();
         let env = text.find("BRIEF_THRESHOLD_TOKENS").unwrap();
         let usage = text.find("Usage: brief").unwrap();
         assert!(targets < gate);
         assert!(gate < recovery);
-        assert!(recovery < env);
+        assert!(recovery < cost);
+        assert!(cost < env);
         assert!(env < usage);
+    }
+
+    #[test]
+    fn help_text_names_the_hook_scope_with_the_slash_list() {
+        assert!(help_text().contains(&slash_list()));
     }
 
     #[test]

@@ -175,7 +175,7 @@ mod tests {
     }
 
     /// The recovery read the hint prescribes: a non-target program (`tail`
-    /// is never one of `crate::cli::dispatch::TARGETS`) whose argv names a
+    /// is never one of `crate::targets::TARGETS`) whose argv names a
     /// path inside the fold directory must produce a tracking row, even
     /// though it ran fully passthrough.
     #[test]

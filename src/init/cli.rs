@@ -8,10 +8,14 @@ use super::fs_ops;
 
 const USAGE: &str = "usage: brief init [--dry-run] [--uninstall]\n";
 
-const HELP: &str = "\
+/// Text for `brief init --help`. A function, not a `const`, because the
+/// scope line names every program in `crate::targets::TARGETS`.
+fn help_text() -> String {
+    format!(
+        "\
 brief init — install brief's PreToolUse hook in Claude Code's settings.json.
 
-The hook rewrites plain grep/cat/find/rg Bash calls to go through brief,
+The hook rewrites plain {} Bash calls to go through brief,
 so their output is gated behind the same token threshold as a direct
 `brief grep ...` invocation. It never changes what a command means: any
 command it cannot confidently classify is left alone untouched.
@@ -29,7 +33,10 @@ Usage: brief init [--dry-run] [--uninstall]
 
 To run a program literally named \"init\", invoke it by path:
 brief ./init
-";
+",
+        crate::targets::slash_list()
+    )
+}
 
 /// Entry point wired from `cli::dispatch` for `brief init [...]`.
 /// `args` is the argv following the literal `init` token.
@@ -51,7 +58,7 @@ pub(crate) fn run_with(
     for arg in args {
         match arg.as_str() {
             "--help" | "-h" => {
-                let _ = out.write_all(HELP.as_bytes());
+                let _ = out.write_all(help_text().as_bytes());
                 return 0;
             }
             "--dry-run" => dry_run = true,

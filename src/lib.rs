@@ -10,6 +10,7 @@ mod init;
 mod private_fs;
 mod report;
 mod runner;
+mod targets;
 mod text_offset;
 mod thousands;
 mod track;

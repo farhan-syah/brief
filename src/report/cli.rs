@@ -12,10 +12,14 @@ use super::{render_json, render_text};
 const USAGE: &str =
     "usage: brief report [--since <Nd|Nh|all|epoch_ms>] [--project] [--format text|json]\n";
 
-const HELP: &str = "\
+/// Text for `brief report --help`. A function, not a `const`, because the
+/// scope line names every program in `crate::targets::TARGETS`.
+fn help_text() -> String {
+    format!(
+        "\
 brief report — summarize the tracking JSONL brief has recorded.
 
-Scope: only grep, cat, find, and rg calls are tracked, so every number is
+Scope: only {} calls are tracked, so every number is
 \"output brief handled,\" never total output or your token usage.
 
 Lower bound: the re-read count only catches re-reads that go back through
@@ -31,7 +35,10 @@ Usage: brief report [--since <spec>] [--project] [--format text|json]
 
 To run a program literally named \"report\", invoke it by path:
 brief ./report
-";
+",
+        crate::targets::oxford_list()
+    )
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum Format {
@@ -68,7 +75,7 @@ pub(crate) fn run_with(
     while i < args.len() {
         match args[i].as_str() {
             "--help" | "-h" => {
-                let _ = out.write_all(HELP.as_bytes());
+                let _ = out.write_all(help_text().as_bytes());
                 return 0;
             }
             "--since" => {

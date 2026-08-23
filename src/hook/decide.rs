@@ -9,12 +9,7 @@
 //! one that declines to act is merely less useful. Every ambiguous case
 //! here resolves toward `None` — leave the command alone.
 
-/// The only programs this hook ever rewrites, matched on the first
-/// remaining word's basename. Mirrors `crate::cli::dispatch::TARGETS` but
-/// is kept as its own list: the hook's classification is deliberately
-/// independent of dispatch's fold-target wiring, even though the values
-/// happen to match today.
-const TARGETS: [&str; 4] = ["grep", "cat", "find", "rg"];
+use crate::targets::TARGETS;
 
 /// Classify `cmd` and return its rewrite, or `None` to leave it alone.
 ///
@@ -337,6 +332,16 @@ mod tests {
     }
 
     #[test]
+    fn sudo_cargo_build_is_left_alone() {
+        assert_eq!(rewrite("sudo cargo build"), None);
+    }
+
+    #[test]
+    fn cargo_build_piped_to_tee_is_left_alone() {
+        assert_eq!(rewrite("cargo build | tee log"), None);
+    }
+
+    #[test]
     fn echo_grep_never_matches() {
         assert_eq!(rewrite("echo grep"), None);
     }
@@ -358,7 +363,8 @@ mod tests {
 
     #[test]
     fn non_target_command_is_left_alone() {
-        assert_eq!(rewrite("ls -la"), None);
+        assert_eq!(rewrite("echo -la"), None);
+        assert_eq!(rewrite("xargs echo"), None);
     }
 
     #[test]
@@ -411,5 +417,37 @@ mod tests {
             rewrite("find . -name x"),
             Some("brief find . -name x".to_string())
         );
+    }
+
+    #[test]
+    fn every_target_is_rewritten() {
+        for name in TARGETS {
+            assert_eq!(
+                rewrite(&format!("{name} foo")),
+                Some(format!("brief {name} foo")),
+                "{name} must be rewritten"
+            );
+        }
+    }
+
+    /// Regression guard for Part 1 of the target-list widening: the hook's
+    /// rewrite decision and dispatch's routing decision must agree for
+    /// every name in the shared `crate::targets::TARGETS` list. Both now
+    /// read the same constant, but this exercises the two real decision
+    /// functions rather than trusting that structurally — if either one
+    /// ever grows extra filtering logic that silently narrows or widens
+    /// what it matches, this fails.
+    #[test]
+    fn hook_and_dispatch_agree_on_every_target() {
+        use std::ffi::OsStr;
+
+        for name in TARGETS {
+            let hook_says_yes = rewrite(&format!("{name} foo")).is_some();
+            let dispatch_says_yes = crate::cli::is_fold_target(OsStr::new(name));
+            assert!(
+                hook_says_yes && dispatch_says_yes,
+                "{name}: hook={hook_says_yes} dispatch={dispatch_says_yes}"
+            );
+        }
     }
 }

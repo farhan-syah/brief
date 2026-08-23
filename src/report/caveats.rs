@@ -11,13 +11,27 @@
 //! leaves the other quietly stating something no longer true — and a
 //! caveat that has drifted from what it qualifies is worse than none.
 
-/// Inline form: what the totals actually cover.
-pub(crate) const SCOPE_SHORT: &str =
-    "grep/cat/find/rg only — output brief handled, not your total usage";
+/// Inline form: what the totals actually cover. Names the programs rather
+/// than saying "tracked programs", because the whole job of this caveat is
+/// letting a reader tell whether their command is in the number — a
+/// generic phrase fits the width cap by dropping the one fact it exists to
+/// carry. The tail is terse to buy room for the names.
+pub(crate) fn scope_short() -> String {
+    format!(
+        "{} only — not your total usage",
+        crate::targets::slash_list()
+    )
+}
 
-/// Standalone form of the same fact.
-pub(crate) const SCOPE_FULL: &str = "Scope: only grep, cat, find, and rg calls are tracked, so every \
-     number is output brief handled, never total output or your token usage.";
+/// Standalone form of the same fact, naming every tracked program from
+/// the single shared `crate::targets::TARGETS` list.
+pub(crate) fn scope_full() -> String {
+    format!(
+        "Scope: only {} calls are tracked, so every number is output brief \
+         handled, never total output or your token usage.",
+        crate::targets::oxford_list()
+    )
+}
 
 /// Inline form: why the re-read count is a floor, not a measurement.
 pub(crate) const LOWER_BOUND_SHORT: &str =
@@ -32,14 +46,26 @@ pub(crate) const LOWER_BOUND_FULL: &str = "Lower bound: the re-read count only c
 mod tests {
     use super::*;
 
-    /// The short and full forms must keep naming the same things. If an
-    /// edit drops a target from one list, this fails rather than leaving
-    /// the two forms describing different scopes.
+    /// `scope_full` must keep naming every tracked program. If an edit
+    /// drops a target from `crate::targets::TARGETS`, this fails rather
+    /// than leaving the full form describing a scope narrower than
+    /// what's actually tracked.
     #[test]
-    fn both_scope_forms_name_every_tracked_program() {
-        for target in ["grep", "cat", "find", "rg"] {
-            assert!(SCOPE_SHORT.contains(target), "short form lost {target}");
-            assert!(SCOPE_FULL.contains(target), "full form lost {target}");
+    fn scope_full_names_every_tracked_program() {
+        let full = scope_full();
+        for target in crate::targets::TARGETS {
+            assert!(full.contains(target), "full form lost {target}");
+        }
+    }
+
+    /// The inline form must name every tracked program: a reader has to be
+    /// able to tell whether their own command is inside the number it is
+    /// attached to.
+    #[test]
+    fn scope_short_names_every_tracked_program() {
+        let short = scope_short();
+        for t in crate::targets::TARGETS {
+            assert!(short.contains(t), "inline scope note lost {t}");
         }
     }
 
@@ -53,7 +79,11 @@ mod tests {
     fn short_forms_stay_short_enough_to_sit_inline() {
         // They are appended to a line that already carries a number; past
         // roughly this width the caveat buries what it qualifies.
-        assert!(SCOPE_SHORT.len() <= 80, "scope note too long to inline");
+        assert!(
+            scope_short().len() <= 80,
+            "scope note too long to sit inline: {}",
+            scope_short()
+        );
         assert!(
             LOWER_BOUND_SHORT.len() <= 80,
             "lower-bound note too long to inline"

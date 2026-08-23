@@ -71,7 +71,10 @@ mod tests {
 
     #[test]
     fn non_target_bash_command_leaves_alone() {
-        let json = r#"{"tool_name":"Bash","tool_input":{"command":"ls -la"}}"#;
+        // `echo`, not `ls` — `ls` became a fold target when the list widened,
+        // and a fixture that silently turns into a target stops testing the
+        // thing it is named for.
+        let json = r#"{"tool_name":"Bash","tool_input":{"command":"echo hello"}}"#;
         let (code, out) = run_on(json);
         assert_eq!(code, 0);
         assert!(out.is_empty());

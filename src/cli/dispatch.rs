@@ -14,7 +14,7 @@
 //! literally named `report`, `hook`, or `init` can no longer be run as
 //! `brief <name>`, only by path (e.g. `brief ./hook`).
 
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::Write;
 use std::process::Command;
 
@@ -23,15 +23,19 @@ use crate::hook;
 use crate::init;
 use crate::report;
 use crate::runner::{basename, run_with};
+use crate::targets::TARGETS;
 use crate::track::TrackConfig;
 
 use super::help::{help_text, version};
 use super::passthrough;
 
-/// Programs brief folds, matched on the basename of `argv[1]`. Everything
-/// else takes the passthrough path with fully inherited stdio. `help::help_text`
-/// reuses this so the target names exist in exactly one place.
-pub(super) const TARGETS: [&str; 4] = ["grep", "cat", "find", "rg"];
+/// Whether `program`'s basename is one of brief's fold targets — the same
+/// decision `main_with` routes argv on. Exposed via `cli::is_fold_target`
+/// so `hook::decide`'s tests can assert its rewrite decision agrees with
+/// this one for every name in `crate::targets::TARGETS`.
+pub(crate) fn is_fold_target(program: &OsStr) -> bool {
+    TARGETS.contains(&basename(program).as_str())
+}
 
 /// Printed on stderr when brief is invoked with no program at all.
 const USAGE: &str = "usage: brief <program> [args...]\n";
@@ -99,7 +103,7 @@ pub fn main_with(
     let mut cmd = Command::new(&program);
     cmd.args(forwarded);
 
-    if TARGETS.contains(&basename(&program).as_str()) {
+    if is_fold_target(&program) {
         dispatch_target(
             cmd,
             &program,
@@ -142,6 +146,22 @@ mod tests {
 
     fn argv(tokens: &[&str]) -> Vec<OsString> {
         tokens.iter().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn is_fold_target_matches_every_target_and_rejects_non_targets() {
+        for name in TARGETS {
+            assert!(
+                is_fold_target(OsStr::new(name)),
+                "{name} should route to the fold path"
+            );
+        }
+        for name in ["echo", "xargs"] {
+            assert!(
+                !is_fold_target(OsStr::new(name)),
+                "{name} should take the passthrough path"
+            );
+        }
     }
 
     #[test]

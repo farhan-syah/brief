@@ -7,3 +7,6 @@ mod help;
 mod passthrough;
 
 pub use dispatch::main_with;
+// Only reached from `hook::decide`'s cross-module regression test today.
+#[cfg(test)]
+pub(crate) use dispatch::is_fold_target;

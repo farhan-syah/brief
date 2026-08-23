@@ -3,9 +3,9 @@
 //!
 //! # Scope limits (restated in every report's own output, not just here)
 //!
-//! - Only `grep`/`cat`/`find`/`rg` invocations are tracked (`crate::track`'s
-//!   documented scope), so every byte total below is "output brief
-//!   handled," never "total output" or "your token usage."
+//! - Only the programs in `crate::targets::TARGETS` are tracked
+//!   (`crate::track`'s documented scope), so every byte total below is
+//!   "output brief handled," never "total output" or "your token usage."
 //! - `reads_fold` only catches a re-read that goes back through brief's
 //!   own argv. A re-read that bypasses brief entirely (a plain shell
 //!   `cat` of a fold file, run outside brief) is invisible here, so the

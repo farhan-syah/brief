@@ -10,7 +10,7 @@ use crate::track::json_string;
 use super::aggregate::{ReportBody, ReportSummary};
 // Full forms: a JSON consumer may show these with no adjacent number to
 // lend them context, so they state the whole fact.
-use super::caveats::{LOWER_BOUND_FULL as LOWER_BOUND_CAVEAT, SCOPE_FULL as SCOPE_CAVEAT};
+use super::caveats::{LOWER_BOUND_FULL as LOWER_BOUND_CAVEAT, scope_full};
 use super::load::LoadResult;
 
 pub(crate) fn render(
@@ -28,7 +28,7 @@ pub(crate) fn render(
     let _ = write!(
         s,
         ",\"caveats\":{{\"scope\":{},\"lower_bound\":{}}}",
-        json_string(SCOPE_CAVEAT),
+        json_string(&scope_full()),
         json_string(LOWER_BOUND_CAVEAT)
     );
 

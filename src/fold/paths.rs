@@ -106,7 +106,7 @@ pub(crate) fn display_shell_path(path: &Path) -> String {
 /// repeat the same long path — see `Fold::render`.
 ///
 /// Routed through `brief tail ...` rather than a bare `tail ...`: `tail`
-/// is not one of brief's fold targets (`crate::cli::dispatch::TARGETS`),
+/// is not one of brief's fold targets (`crate::targets::TARGETS`),
 /// so a bare `tail` following this hint runs untracked and brief never
 /// sees the recovery read. `brief tail` still runs `tail` exactly as
 /// before — `crate::cli::passthrough` forwards it with fully inherited
