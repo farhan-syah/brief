@@ -1,4 +1,4 @@
-//! Machine-readable `sigfold report` output (`--format json`). Hand-rolled,
+//! Machine-readable `brief report` output (`--format json`). Hand-rolled,
 //! flat-ish JSON — no `serde` — reusing `track::json_string` for escaping
 //! rather than writing a second escaper that could drift from `parse.rs`'s
 //! unescaper.
@@ -8,12 +8,10 @@ use std::fmt::Write as _;
 use crate::track::json_string;
 
 use super::aggregate::{ReportBody, ReportSummary};
+// Full forms: a JSON consumer may show these with no adjacent number to
+// lend them context, so they state the whole fact.
+use super::caveats::{LOWER_BOUND_FULL as LOWER_BOUND_CAVEAT, SCOPE_FULL as SCOPE_CAVEAT};
 use super::load::LoadResult;
-
-const SCOPE_CAVEAT: &str = "Scope: only grep, cat, find, and rg calls are tracked, so every number is \
-     \"output sigfold handled,\" never total output or your token usage.";
-const LOWER_BOUND_CAVEAT: &str = "Lower bound: the re-read count only catches re-reads that go back through \
-     sigfold's own argv. A plain shell cat of a fold file is invisible to it.";
 
 pub(crate) fn render(
     window_label: &str,

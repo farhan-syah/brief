@@ -1,17 +1,22 @@
-//! Human-readable `sigfold report` output (`--format text`, the default).
+//! Human-readable `brief report` output (`--format text`, the default).
 
 use std::fmt::Write as _;
 
 use super::aggregate::{ReportBody, ReportSummary};
+// Short forms: each is attached directly to the number it qualifies rather
+// than printed as a detached block, so it survives excerpting of that line.
+use super::caveats::{LOWER_BOUND_SHORT as LOWER_BOUND_CAVEAT, SCOPE_SHORT as SCOPE_NOTE};
 use super::load::LoadResult;
+use crate::thousands::with_thousands_separator as sep;
 
-/// Restated in every run's own output — see the scope-limits doc comment
-/// in `report::mod` for the full reasoning. A report gets excerpted, and a
-/// caveat that lives only in `--help` is lost when it does.
-const SCOPE_CAVEAT: &str = "Scope: only grep, cat, find, and rg calls are tracked, so every number below is \
-     \"output sigfold handled,\" never total output or your token usage.";
-const LOWER_BOUND_CAVEAT: &str = "Lower bound: the re-read count below only catches re-reads that go back through \
-     sigfold's own argv. A plain shell `cat` of a fold file is invisible to it.";
+/// `n` and the correctly pluralized `noun` (`1 call`, `2 calls`).
+fn plural(n: usize, noun: &str) -> String {
+    if n == 1 {
+        format!("{n} {noun}")
+    } else {
+        format!("{n} {noun}s")
+    }
+}
 
 /// Render the full text report for `window_label` (e.g. "last 30 days",
 /// "all time"), `project` (whether `--project` was passed), `load`
@@ -25,21 +30,23 @@ pub(crate) fn render(
     let mut s = String::new();
     render_header(&mut s, window_label, project, load);
     let _ = writeln!(s);
-    let _ = writeln!(s, "{SCOPE_CAVEAT}");
-    let _ = writeln!(s, "{LOWER_BOUND_CAVEAT}");
-    let _ = writeln!(s);
 
     match body {
         ReportBody::NoData => {
             let _ = writeln!(
                 s,
-                "No tracking data yet — sigfold has not recorded any grep/cat/find/rg calls."
+                "No tracking data yet — brief has not recorded any grep/cat/find/rg calls."
             );
         }
         ReportBody::AllMalformed => {
+            let (verb, line_word) = if load.total_lines == 1 {
+                ("was", "line")
+            } else {
+                ("were", "lines")
+            };
             let _ = writeln!(
                 s,
-                "{} line(s) were found but none parsed — the tracking file may be corrupted.",
+                "{} {line_word} {verb} found but none parsed — the tracking file may be corrupted.",
                 load.total_lines
             );
         }
@@ -47,7 +54,7 @@ pub(crate) fn render(
             let project_note = if project { ", in this directory" } else { "" };
             let _ = writeln!(
                 s,
-                "No rows in {window_label}{project_note} — sigfold has recorded data, \
+                "No rows in {window_label}{project_note} — brief has recorded data, \
                  just none in this window."
             );
         }
@@ -63,26 +70,35 @@ fn render_header(s: &mut String, window_label: &str, project: bool, load: &LoadR
     } else {
         ""
     };
-    let _ = writeln!(s, "sigfold report — window: {window_label}{project_note}");
-    let _ = writeln!(s, "rows parsed: {}", load.parsed_total());
-    let _ = writeln!(s, "malformed: {}", load.malformed);
+    let _ = writeln!(
+        s,
+        "brief report — {window_label}{project_note} · {} · {} malformed",
+        plural(load.parsed_total(), "row"),
+        load.malformed
+    );
 }
 
 fn render_data(s: &mut String, summary: &ReportSummary) {
-    let _ = writeln!(s, "Handled totals ({} calls):", summary.row_count);
+    let _ = writeln!(
+        s,
+        "Handled totals ({} — {SCOPE_NOTE}):",
+        plural(summary.row_count, "call")
+    );
     let _ = writeln!(
         s,
         "  raw:  {} bytes (~{} tokens)",
-        summary.raw_bytes, summary.raw_tokens
+        sep(summary.raw_bytes as usize),
+        sep(summary.raw_tokens)
     );
     let _ = writeln!(
         s,
         "  kept: {} bytes (~{} tokens)",
-        summary.kept_bytes, summary.kept_tokens
+        sep(summary.kept_bytes as usize),
+        sep(summary.kept_tokens)
     );
     let _ = writeln!(
         s,
-        "  {:.1}% of output sigfold handled was set aside to disk.",
+        "  {:.1}% of output brief handled was set aside to disk.",
         summary.set_aside_pct
     );
     let _ = writeln!(s);
@@ -102,43 +118,43 @@ fn render_data(s: &mut String, summary: &ReportSummary) {
         Some(conc) => {
             let _ = writeln!(
                 s,
-                "  top 1%  ({} call(s)): {:.1}% of raw bytes",
-                conc.top1.rows, conc.top1.pct_of_bytes
+                "  top 1%  ({}): {:.1}% of raw bytes",
+                plural(conc.top1.rows, "call"),
+                conc.top1.pct_of_bytes
             );
             let _ = writeln!(
                 s,
-                "  top 5%  ({} call(s)): {:.1}% of raw bytes",
-                conc.top5.rows, conc.top5.pct_of_bytes
+                "  top 5%  ({}): {:.1}% of raw bytes",
+                plural(conc.top5.rows, "call"),
+                conc.top5.pct_of_bytes
             );
             let _ = writeln!(
                 s,
-                "  top 20% ({} call(s)): {:.1}% of raw bytes",
-                conc.top20.rows, conc.top20.pct_of_bytes
+                "  top 20% ({}): {:.1}% of raw bytes",
+                plural(conc.top20.rows, "call"),
+                conc.top20.pct_of_bytes
             );
         }
     }
     let _ = writeln!(s);
 
-    let _ = writeln!(s, "Re-read cost (lower bound):");
+    let _ = writeln!(s, "Re-read cost ({LOWER_BOUND_CAVEAT}):");
     let _ = writeln!(
         s,
-        "  {} re-read(s) of {} folded call(s)",
-        summary.reread.reread_rows, summary.reread.folded_rows
+        "  {} of {}",
+        plural(summary.reread.reread_rows, "re-read"),
+        plural(summary.reread.folded_rows, "folded call")
     );
     match summary.reread.rate() {
         None => {
             let _ = writeln!(s, "  no folds occurred, so there is no rate to report.");
         }
         Some(rate) => {
-            let _ = writeln!(
-                s,
-                "  re-read rate: {rate:.1}% (lower bound; see scope note above)"
-            );
+            let _ = writeln!(s, "  re-read rate: {rate:.1}%");
             if summary.reread.reread_rows == 0 {
                 let _ = writeln!(
                     s,
-                    "  0 re-reads observed here proves nothing beyond this argv-visible \
-                     signal — it is not evidence that no re-reading happened."
+                    "  0 observed here — argv-visible signal only, not proof none happened."
                 );
             }
         }
@@ -155,16 +171,21 @@ fn render_data(s: &mut String, summary: &ReportSummary) {
         let _ = writeln!(
             s,
             "  {:<8} {:>8} {:>14} {:>14} {:>8} {:>9.1}%",
-            p.program, p.calls, p.raw_bytes, p.kept_bytes, p.folded_count, p.reduction_pct
+            p.program,
+            p.calls,
+            sep(p.raw_bytes as usize),
+            sep(p.kept_bytes as usize),
+            p.folded_count,
+            p.reduction_pct
         );
     }
     let _ = writeln!(s);
 
     let _ = writeln!(
         s,
-        "Non-zero exit: {} call(s) — context only, not a failure count (grep/rg \
+        "Non-zero exit: {} — context only, not a failure count (grep/rg \
          exit non-zero on \"no match\").",
-        summary.nonzero_exit_count
+        plural(summary.nonzero_exit_count, "call")
     );
 }
 
@@ -199,11 +220,16 @@ mod tests {
     }
 
     #[test]
-    fn caveats_always_present() {
-        let l = load(0, 0, vec![]);
-        let text = render("all time", false, &l, &ReportBody::NoData);
-        assert!(text.contains(SCOPE_CAVEAT));
+    fn caveats_attached_to_the_numbers_they_qualify() {
+        let rows = vec![row("grep", 10, 10)];
+        let l = load(1, 0, rows.clone());
+        let text = render("all time", false, &l, &ReportBody::Data(aggregate(&rows)));
+        assert!(text.contains(SCOPE_NOTE));
         assert!(text.contains(LOWER_BOUND_CAVEAT));
+        assert!(
+            text.contains(&format!("Handled totals (1 call — {SCOPE_NOTE}):")),
+            "scope note must be attached to the Handled totals line: {text}"
+        );
     }
 
     #[test]
@@ -215,7 +241,7 @@ mod tests {
             &l,
             &ReportBody::Data(aggregate(&l.rows)),
         );
-        assert!(text.contains("malformed: 0"));
+        assert!(text.contains("0 malformed"));
     }
 
     #[test]
@@ -256,5 +282,23 @@ mod tests {
         let text = render("all time", false, &l, &ReportBody::Data(aggregate(&rows)));
         assert!(text.contains("too small a sample"));
         assert!(!text.contains("top 1%"));
+    }
+
+    #[test]
+    fn plural_is_singular_for_one_and_plural_otherwise() {
+        assert_eq!(plural(0, "call"), "0 calls");
+        assert_eq!(plural(1, "call"), "1 call");
+        assert_eq!(plural(2, "call"), "2 calls");
+    }
+
+    #[test]
+    fn handled_totals_uses_singular_call_for_one_row() {
+        let rows = vec![row("grep", 10, 10)];
+        let l = load(1, 0, rows.clone());
+        let text = render("all time", false, &l, &ReportBody::Data(aggregate(&rows)));
+        assert!(
+            text.contains("Handled totals (1 call —"),
+            "must say '1 call', not '1 calls': {text}"
+        );
     }
 }

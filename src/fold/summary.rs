@@ -6,8 +6,10 @@
 use std::io;
 use std::path::PathBuf;
 
+use crate::thousands::with_thousands_separator;
+
 use super::config::FoldConfig;
-use super::paths::{format_hint, format_tail_hint, resolve_fold_dir};
+use super::paths::{format_full_output_hint, resolve_fold_dir};
 use super::tokens::estimate_tokens;
 use super::write::write_fold_file;
 
@@ -107,17 +109,16 @@ impl Fold {
             out.push('\n');
         }
         out.push_str(&format!(
-            "\n... {omitted} of {} lines omitted ...\n\n",
-            self.total_lines
+            "\n... {} of {} lines omitted ...\n\n",
+            with_thousands_separator(omitted),
+            with_thousands_separator(self.total_lines)
         ));
         out.push_str(&self.tail);
         if !self.tail.is_empty() && !self.tail.ends_with('\n') {
             out.push('\n');
         }
         out.push('\n');
-        out.push_str(&format_hint(&self.path));
-        out.push('\n');
-        out.push_str(&format_tail_hint(&self.path, head_lines + 1));
+        out.push_str(&format_full_output_hint(&self.path, head_lines + 1));
         out
     }
 }
@@ -418,8 +419,41 @@ mod tests {
         assert!(rendered.contains("line 0"), "must show head");
         assert!(rendered.contains("line 499"), "must show tail");
         assert!(rendered.contains("500"), "must state total line count");
-        assert!(rendered.contains("[full output: "));
-        assert!(rendered.contains("[see remaining: tail -n +"));
+        assert!(rendered.contains("[full output: tail -n +"));
+        assert_eq!(
+            rendered.matches(fold.path.to_str().unwrap()).count(),
+            1,
+            "the fold path must be printed exactly once, not repeated across two hint lines"
+        );
+    }
+
+    #[test]
+    fn render_adds_thousands_separators_to_omission_marker() {
+        let tmpdir = tempfile::tempdir().unwrap();
+        let cfg = FoldConfig {
+            threshold_tokens: 10,
+            ..cfg_with_dir(tmpdir.path())
+        };
+        let raw: String = (0..4231).map(|i| format!("line {i}\n")).collect();
+        let outcome = fold_output(&raw, "my_cmd", &cfg).unwrap();
+        let FoldOutcome::Folded(fold) = outcome else {
+            panic!("expected Folded");
+        };
+        let rendered = fold.render();
+        assert!(
+            rendered.contains("4,131 of 4,231 lines omitted"),
+            "omission marker must use thousands separators: {rendered}"
+        );
+    }
+
+    #[test]
+    fn with_thousands_separator_shape() {
+        assert_eq!(with_thousands_separator(0), "0");
+        assert_eq!(with_thousands_separator(51), "51");
+        assert_eq!(with_thousands_separator(999), "999");
+        assert_eq!(with_thousands_separator(1000), "1,000");
+        assert_eq!(with_thousands_separator(4131), "4,131");
+        assert_eq!(with_thousands_separator(1234567), "1,234,567");
     }
 
     #[test]
