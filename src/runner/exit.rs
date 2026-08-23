@@ -4,7 +4,7 @@
 /// Exit code of a finished child: its own code, or `128 + signal` when it
 /// was killed by a signal (the shell convention), or 1 when neither is
 /// available.
-pub(crate) fn status_to_exit_code(status: std::process::ExitStatus) -> i32 {
+pub fn status_to_exit_code(status: std::process::ExitStatus) -> i32 {
     if let Some(code) = status.code() {
         return code;
     }

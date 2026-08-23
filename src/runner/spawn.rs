@@ -8,6 +8,7 @@
 //! panic". Every early return below — a read error, a disk error, a panicking
 //! reader thread — still reaps the child through it.
 
+use std::ffi::OsStr;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -165,7 +166,14 @@ fn join_reader(
 /// Fold-file slug from the command's program name (basename only — a full
 /// path would be sanitized into an unreadable filename).
 fn program_slug(cmd: &Command) -> String {
-    let program = cmd.get_program();
+    basename(cmd.get_program())
+}
+
+/// Basename of a program path or name. `crate::cli` reuses this to decide
+/// whether `argv[1]` names one of sigfold's fold targets, matching exactly
+/// the slug logic the fold-file writer already uses — one basename rule,
+/// not two that could disagree.
+pub(crate) fn basename(program: &OsStr) -> String {
     PathBuf::from(program)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -453,5 +461,11 @@ mod tests {
     fn program_slug_uses_the_basename() {
         assert_eq!(program_slug(&Command::new("/usr/bin/grep")), "grep");
         assert_eq!(program_slug(&Command::new("cargo")), "cargo");
+    }
+
+    #[test]
+    fn basename_strips_leading_path_components() {
+        assert_eq!(basename(OsStr::new("/usr/bin/grep")), "grep");
+        assert_eq!(basename(OsStr::new("rg")), "rg");
     }
 }

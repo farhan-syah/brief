@@ -13,7 +13,18 @@ use super::config::FoldConfig;
 /// Resolve the fold directory: `SIGFOLD_FOLD_DIR` env var, then
 /// `cfg.directory`, then the default `dirs::data_local_dir()/sigfold/folds`.
 pub(crate) fn resolve_fold_dir(cfg: &FoldConfig) -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("SIGFOLD_FOLD_DIR") {
+    resolve_fold_dir_with(cfg, |key| std::env::var(key).ok())
+}
+
+/// `resolve_fold_dir` with an injected env lookup, so tests can drive the
+/// precedence logic as a pure function instead of mutating the real process
+/// environment (which is process-global state that would race other tests
+/// running in parallel threads).
+pub(crate) fn resolve_fold_dir_with(
+    cfg: &FoldConfig,
+    lookup: impl Fn(&str) -> Option<String>,
+) -> Option<PathBuf> {
+    if let Some(dir) = lookup("SIGFOLD_FOLD_DIR") {
         return Some(PathBuf::from(dir));
     }
     if let Some(ref dir) = cfg.directory {
@@ -107,29 +118,28 @@ pub(crate) fn format_tail_hint(path: &Path, line_offset: usize) -> String {
 mod tests {
     use super::*;
 
-    // Both env-touching cases live in one test: SIGFOLD_FOLD_DIR is
-    // process-global, and cargo runs tests in parallel threads by default,
-    // so a separate set/remove pair here could race another test's read.
     #[test]
-    fn resolve_fold_dir_env_and_config_precedence() {
+    fn resolve_fold_dir_config_directory_used_when_env_unset() {
         let cfg = FoldConfig {
             directory: Some(PathBuf::from("/tmp/sigfold-cfg")),
             ..FoldConfig::default()
         };
         assert_eq!(
-            resolve_fold_dir(&cfg),
+            resolve_fold_dir_with(&cfg, |_| None),
             Some(PathBuf::from("/tmp/sigfold-cfg")),
             "config directory used when env var is unset"
         );
+    }
 
-        // SAFETY: env var is unique to this test within the crate.
-        unsafe {
-            std::env::set_var("SIGFOLD_FOLD_DIR", "/tmp/sigfold-env-override");
-        }
-        let dir = resolve_fold_dir(&cfg);
-        unsafe {
-            std::env::remove_var("SIGFOLD_FOLD_DIR");
-        }
+    #[test]
+    fn resolve_fold_dir_env_wins_over_config_directory() {
+        let cfg = FoldConfig {
+            directory: Some(PathBuf::from("/tmp/sigfold-cfg")),
+            ..FoldConfig::default()
+        };
+        let dir = resolve_fold_dir_with(&cfg, |key| {
+            (key == "SIGFOLD_FOLD_DIR").then(|| "/tmp/sigfold-env-override".to_string())
+        });
         assert_eq!(
             dir,
             Some(PathBuf::from("/tmp/sigfold-env-override")),
@@ -140,7 +150,7 @@ mod tests {
     #[test]
     fn resolve_fold_dir_default_ends_in_sigfold_folds() {
         let cfg = FoldConfig::default();
-        let Some(dir) = resolve_fold_dir(&cfg) else {
+        let Some(dir) = resolve_fold_dir_with(&cfg, |_| None) else {
             return; // no data_local_dir on this platform/environment
         };
         assert!(dir.ends_with("sigfold/folds"));

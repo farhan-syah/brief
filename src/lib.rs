@@ -3,8 +3,10 @@
 //! threshold, output passes through byte-for-byte untouched — nothing is
 //! ever destroyed.
 
+mod cli;
 mod fold;
 mod runner;
 
+pub use cli::main_with;
 pub use fold::{Fold, FoldConfig, FoldOutcome, fold_output};
-pub use runner::{RunOutcome, run};
+pub use runner::{RunOutcome, run, status_to_exit_code};

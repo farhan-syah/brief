@@ -30,4 +30,10 @@ mod exit;
 mod spawn;
 mod spill;
 
+pub use exit::status_to_exit_code;
 pub use spawn::{RunOutcome, run};
+// `pub(crate)` re-exports: the CLI dispatch (`crate::cli`) drives a child
+// through the same fold-gated path the public `run` uses, with explicit
+// `out`/`err` destinations, and needs the same basename logic `spawn`
+// already uses to slug a fold file.
+pub(crate) use spawn::{basename, run_with};
