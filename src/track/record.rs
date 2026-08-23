@@ -130,7 +130,11 @@ fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
 
 /// JSON-quote and escape `s`: `"`, `\`, and control characters below
 /// `0x20` are escaped; everything else passes through untouched.
-fn json_string(s: &str) -> String {
+///
+/// `pub(crate)` so `report::render_json` can reuse this exact escaper
+/// instead of writing a second one that could drift from what `to_line`
+/// actually emits (and that `report::parse` must reverse).
+pub(crate) fn json_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {

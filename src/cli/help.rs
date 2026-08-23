@@ -33,6 +33,10 @@ Environment overrides:
   SIGFOLD_ENABLED            0 or false disables folding entirely
   SIGFOLD_FOLD_DIR           directory fold files are written to
 
+`report` is reserved as argv[1] for `sigfold report [...]`, a falsifiable
+summary of the tracking data sigfold has recorded; see `sigfold report --help`.
+A program literally named `report` must be run by path: `sigfold ./report`.
+
 Usage: sigfold <program> [args...]
 ",
         targets_sentence()

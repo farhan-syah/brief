@@ -6,6 +6,7 @@
 mod cli;
 mod fold;
 mod private_fs;
+mod report;
 mod runner;
 mod track;
 

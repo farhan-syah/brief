@@ -93,6 +93,14 @@ fn tmp_path_for(path: &Path) -> std::path::PathBuf {
 /// Extract `ts_ms` from a raw JSONL line without a JSON parser: find
 /// `"ts_ms":` and read the digits that follow it. Operates on bytes, so a
 /// line that is not valid UTF-8 is merely unparseable rather than an error.
+///
+/// This substring search is safe ONLY because `record::InvocationRecord::
+/// serialize` always emits `ts_ms` as the first field, so the first match
+/// is always the real one — `args` (the one field with arbitrary user
+/// text) can never contain a `"ts_ms":` byte sequence that this function
+/// would see before the real one. `report::parse::parse_line` cannot make
+/// this assumption (it also needs `program`, `cwd`, etc., not just the
+/// first field), which is why it uses a full string-aware scanner instead.
 fn line_ts_ms(line: &[u8]) -> Option<u128> {
     let key = b"\"ts_ms\":";
     let idx = line.windows(key.len()).position(|w| w == key)?;

@@ -5,12 +5,19 @@
 //! top-level `-h`/`--help`/`-V`/`--version`, and reserving them would make
 //! `sigfold grep -h` silently print sigfold's help instead of grep's — a
 //! correctness bug of exactly the kind this tool exists to avoid.
+//!
+//! The literal `argv[1]` value `report` is reserved the same way, for
+//! `sigfold report [...]` (see `crate::report`). The trade-off is the same
+//! one the flag reservations already accept: a program literally named
+//! `report` can no longer be run as `sigfold report`, only by path
+//! (`sigfold ./report`).
 
 use std::ffi::OsString;
 use std::io::Write;
 use std::process::Command;
 
 use crate::fold::FoldConfig;
+use crate::report;
 use crate::runner::{basename, run_with};
 use crate::track::TrackConfig;
 
@@ -59,6 +66,16 @@ pub fn main_with(
         };
         let _ = out.write_all(text.as_bytes());
         return 0;
+    }
+
+    // Reserved literal, intercepted before the fold-target branch below —
+    // see the module doc comment for the trade-off this accepts.
+    if program.to_str() == Some("report") {
+        let report_args: Vec<String> = post_program[1..]
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        return report::run(&report_args, out, err);
     }
 
     let forwarded = &post_program[1..];

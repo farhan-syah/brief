@@ -31,4 +31,5 @@ mod retention;
 
 pub(crate) use append::append;
 pub use config::TrackConfig;
-pub(crate) use record::{InvocationRecord, now_ms};
+pub(crate) use paths::resolve_track_path;
+pub(crate) use record::{InvocationRecord, json_string, now_ms};
