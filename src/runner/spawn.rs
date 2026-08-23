@@ -10,12 +10,14 @@
 
 use std::ffi::OsStr;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::Instant;
 
 use crate::fold::paths::resolve_fold_dir;
 use crate::fold::rotate::cleanup_old_files;
 use crate::fold::{FoldConfig, FoldOutcome};
+use crate::track::{self, InvocationRecord, TrackConfig};
 
 use super::exit::status_to_exit_code;
 use super::spill::{StreamCapture, StreamSink};
@@ -43,11 +45,12 @@ impl Drop for ChildGuard {
 }
 
 /// Run `cmd` under the fold gate, writing its output to the process's own
-/// stdout and stderr.
-pub fn run(cmd: Command, cfg: &FoldConfig) -> io::Result<RunOutcome> {
+/// stdout and stderr. Appends one best-effort tracking row per invocation —
+/// see `crate::track` — governed by `track_cfg`.
+pub fn run(cmd: Command, cfg: &FoldConfig, track_cfg: &TrackConfig) -> io::Result<RunOutcome> {
     let stdout = io::stdout();
     let stderr = io::stderr();
-    run_with(cmd, cfg, &mut stdout.lock(), &mut stderr.lock())
+    run_with(cmd, cfg, track_cfg, &mut stdout.lock(), &mut stderr.lock())
 }
 
 /// `run` with explicit destinations, so tests can assert on the exact bytes
@@ -55,6 +58,7 @@ pub fn run(cmd: Command, cfg: &FoldConfig) -> io::Result<RunOutcome> {
 pub(crate) fn run_with(
     mut cmd: Command,
     cfg: &FoldConfig,
+    track_cfg: &TrackConfig,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> io::Result<RunOutcome> {
@@ -68,6 +72,7 @@ pub(crate) fn run_with(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
+    let started = Instant::now();
     let mut child = ChildGuard(cmd.spawn()?);
     let child_stdout = child
         .0
@@ -110,25 +115,99 @@ pub(crate) fn run_with(
     let err_capture = err_capture?;
 
     let status = child.0.wait()?;
+    let exec_time_ms = started.elapsed().as_millis();
     let exit_code = status_to_exit_code(status);
 
     // Rotate once, after both fold files are complete: `cleanup_old_files`
     // deletes the oldest files, so running it while the other stream is still
     // writing could delete a file that is still being filled.
-    let folded = matches!(out_capture, StreamCapture::Folded(_))
-        || matches!(err_capture, StreamCapture::Folded(_));
+    let folded = out_capture.is_folded() || err_capture.is_folded();
     if folded && let Some(dir) = dir.as_deref() {
         cleanup_old_files(dir, cfg.max_files);
     }
 
+    // Read the captures' sizes and paths before `emit` consumes them — this
+    // is the one place a passthrough's byte count would otherwise be lost.
+    let record = build_record(
+        &cmd,
+        dir.as_deref(),
+        exit_code,
+        exec_time_ms,
+        &out_capture,
+        &err_capture,
+    );
+
     let stdout = emit(out_capture, out)?;
     let stderr = emit(err_capture, err)?;
+
+    // Best-effort and always last: tracking must never delay, alter, or
+    // fail the command that was just run.
+    let _ = track::append(&record, track_cfg);
 
     Ok(RunOutcome {
         exit_code,
         stdout,
         stderr,
     })
+}
+
+/// Build the tracking row for this invocation from the command as spawned
+/// (program/args, read before `emit` would otherwise be the only thing left
+/// holding them) and both streams' captures (read before `emit` consumes
+/// them).
+fn build_record(
+    cmd: &Command,
+    fold_dir: Option<&Path>,
+    exit_code: i32,
+    exec_time_ms: u128,
+    out_capture: &StreamCapture,
+    err_capture: &StreamCapture,
+) -> InvocationRecord {
+    let program = cmd.get_program().to_string_lossy().into_owned();
+    let args: Vec<String> = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let cwd = std::env::current_dir().ok();
+    let reads_fold = fold_dir.is_some_and(|dir| {
+        args.iter()
+            .any(|arg| arg_reads_fold_dir(arg, dir, cwd.as_deref()))
+    });
+
+    InvocationRecord {
+        ts_ms: track::now_ms(),
+        program,
+        args: args.join(" "),
+        cwd: cwd.as_ref().map(|p| p.display().to_string()),
+        exit_code,
+        exec_time_ms,
+        stdout_raw_bytes: out_capture.raw_bytes(),
+        stdout_kept_bytes: out_capture.kept_bytes(),
+        stdout_folded: out_capture.is_folded(),
+        stdout_path: out_capture.fold_path().map(|p| p.display().to_string()),
+        stderr_raw_bytes: err_capture.raw_bytes(),
+        stderr_kept_bytes: err_capture.kept_bytes(),
+        stderr_folded: err_capture.is_folded(),
+        stderr_path: err_capture.fold_path().map(|p| p.display().to_string()),
+        reads_fold,
+    }
+}
+
+/// Whether `arg`, resolved as a path against `cwd`, lies inside `fold_dir`
+/// — i.e. this invocation is reading back a fold file a previous invocation
+/// wrote. This is inspection of the invocation's own argv, never a
+/// filesystem watch or atime probe.
+fn arg_reads_fold_dir(arg: &str, fold_dir: &Path, cwd: Option<&Path>) -> bool {
+    let path = PathBuf::from(arg);
+    let resolved = if path.is_absolute() {
+        path
+    } else {
+        match cwd {
+            Some(cwd) => cwd.join(path),
+            None => return false,
+        }
+    };
+    resolved.starts_with(fold_dir)
 }
 
 /// Write one captured stream to its destination. Passthrough bytes go out
@@ -198,6 +277,15 @@ mod tests {
         }
     }
 
+    /// Tracking disabled: these tests exercise the fold gate, not tracking,
+    /// and must not write to a real tracking file.
+    fn no_track() -> TrackConfig {
+        TrackConfig {
+            enabled: false,
+            ..TrackConfig::default()
+        }
+    }
+
     /// 40k numbered lines: ~270 KB, well past the default gate.
     fn big_lines() -> String {
         (1..=40_000).map(|i| format!("line {i}\n")).collect()
@@ -213,6 +301,7 @@ mod tests {
         let outcome = run_with(
             sh(r"printf '\377\376\200\001hello'"),
             &cfg(tmp.path(), 25_000),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -232,6 +321,7 @@ mod tests {
         let outcome = run_with(
             sh("seq 1 40000 | sed 's/^/line /'"),
             &cfg(tmp.path(), 100),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -264,6 +354,7 @@ mod tests {
         let outcome = run_with(
             sh(r"i=0; while [ $i -lt 4000 ]; do printf '\377\376\200\001abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuv\n'; i=$((i+1)); done"),
             &cfg(tmp.path(), 100),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -292,6 +383,7 @@ mod tests {
         let outcome = run_with(
             sh("seq 1 40000 | sed 's/^/line /'; echo oops >&2"),
             &cfg(tmp.path(), 100),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -311,6 +403,7 @@ mod tests {
         let outcome = run_with(
             sh("echo tiny; seq 1 40000 | sed 's/^/line /' >&2"),
             &cfg(tmp.path(), 100),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -338,6 +431,7 @@ mod tests {
         let outcome = run_with(
             sh("seq 1 40000 | sed 's/^/line /'; seq 1 40000 | sed 's/^/line /' >&2"),
             &cfg(tmp.path(), 100),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -358,7 +452,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let outcome = run_with(sh("exit 3"), &cfg(tmp.path(), 25_000), &mut out, &mut err).unwrap();
+        let outcome = run_with(
+            sh("exit 3"),
+            &cfg(tmp.path(), 25_000),
+            &no_track(),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
         assert_eq!(outcome.exit_code, 3);
     }
 
@@ -371,6 +472,7 @@ mod tests {
         let outcome = run_with(
             sh("seq 1 40000 | sed 's/^/line /'; exit 2"),
             &cfg(tmp.path(), 100),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -385,7 +487,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let outcome = run_with(sh("true"), &cfg(tmp.path(), 25_000), &mut out, &mut err).unwrap();
+        let outcome = run_with(
+            sh("true"),
+            &cfg(tmp.path(), 25_000),
+            &no_track(),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
 
         assert_eq!(outcome.exit_code, 0);
         assert!(out.is_empty(), "no output must mean no bytes written");
@@ -412,6 +521,7 @@ mod tests {
         let outcome = run_with(
             sh("seq 1 40000 | sed 's/^/line /'"),
             &disabled,
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -430,6 +540,7 @@ mod tests {
         run_with(
             sh("echo a; echo b >&2; echo c; echo d >&2"),
             &cfg(tmp.path(), 25_000),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -450,6 +561,7 @@ mod tests {
         let outcome = run_with(
             sh("seq 1 40000 | sed 's/^/line /'; seq 1 40000 | sed 's/^/line /' >&2"),
             &cfg(tmp.path(), 25_000),
+            &no_track(),
             &mut out,
             &mut err,
         )
@@ -467,5 +579,129 @@ mod tests {
     fn basename_strips_leading_path_components() {
         assert_eq!(basename(OsStr::new("/usr/bin/grep")), "grep");
         assert_eq!(basename(OsStr::new("rg")), "rg");
+    }
+
+    fn track_cfg(dir: &std::path::Path) -> TrackConfig {
+        TrackConfig {
+            path: Some(dir.join("tracking.jsonl")),
+            ..TrackConfig::default()
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn tracking_row_records_raw_and_kept_bytes_for_a_fold() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        run_with(
+            sh("seq 1 40000 | sed 's/^/line /'"),
+            &cfg(tmp.path(), 100),
+            &track_cfg(tmp.path()),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
+
+        let line = std::fs::read_to_string(tmp.path().join("tracking.jsonl")).unwrap();
+        assert_eq!(line.lines().count(), 1);
+        assert!(line.contains("\"stdout_folded\":true"));
+        assert!(line.contains(&format!("\"stdout_raw_bytes\":{}", big_lines().len())));
+        assert!(line.contains("\"stdout_path\":"));
+        assert!(line.contains("\"exit_code\":0"));
+    }
+
+    /// Passthrough rows are mandatory and carry the real byte count, never
+    /// a zero placeholder — that zeroed denominator is exactly what made
+    /// the tool sigfold replaces produce a misleading savings figure.
+    #[test]
+    #[cfg(unix)]
+    fn tracking_row_for_passthrough_carries_real_nonzero_bytes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        run_with(
+            sh("printf hello"),
+            &cfg(tmp.path(), 25_000),
+            &track_cfg(tmp.path()),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
+
+        let line = std::fs::read_to_string(tmp.path().join("tracking.jsonl")).unwrap();
+        assert!(line.contains("\"stdout_folded\":false"));
+        assert!(line.contains("\"stdout_raw_bytes\":5"));
+        assert!(line.contains("\"stdout_kept_bytes\":5"));
+        assert!(!line.contains("\"stdout_path\":"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn tracking_disabled_writes_no_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        run_with(
+            sh("echo hi"),
+            &cfg(tmp.path(), 25_000),
+            &no_track(),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
+
+        assert!(!tmp.path().join("tracking.jsonl").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reads_fold_true_when_an_arg_resolves_inside_the_fold_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fold_dir = tmp.path().join("folds");
+        std::fs::create_dir_all(&fold_dir).unwrap();
+        let fold_file = fold_dir.join("1_grep.out.log");
+        std::fs::write(&fold_file, "leftover fold content\n").unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut cmd = Command::new("cat");
+        cmd.arg(&fold_file);
+        run_with(
+            cmd,
+            &cfg(&fold_dir, 25_000),
+            &track_cfg(tmp.path()),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
+
+        let line = std::fs::read_to_string(tmp.path().join("tracking.jsonl")).unwrap();
+        assert!(line.contains("\"reads_fold\":true"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reads_fold_false_for_an_unrelated_argument() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fold_dir = tmp.path().join("folds");
+        let other = tmp.path().join("elsewhere.txt");
+        std::fs::write(&other, "hi\n").unwrap();
+
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut cmd = Command::new("cat");
+        cmd.arg(&other);
+        run_with(
+            cmd,
+            &cfg(&fold_dir, 25_000),
+            &track_cfg(tmp.path()),
+            &mut out,
+            &mut err,
+        )
+        .unwrap();
+
+        let line = std::fs::read_to_string(tmp.path().join("tracking.jsonl")).unwrap();
+        assert!(line.contains("\"reads_fold\":false"));
     }
 }

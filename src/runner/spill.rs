@@ -41,6 +41,39 @@ pub(crate) enum StreamCapture {
     Folded(Fold),
 }
 
+impl StreamCapture {
+    /// Raw byte count the command actually produced on this stream. For a
+    /// passthrough this is `kept_bytes` too — the tracking row's mandatory
+    /// evidence that "no fold happened" is not the same as "zero bytes".
+    pub(crate) fn raw_bytes(&self) -> usize {
+        match self {
+            StreamCapture::Passthrough(bytes) => bytes.len(),
+            StreamCapture::Folded(fold) => fold.raw_bytes,
+        }
+    }
+
+    /// Bytes that actually reached the caller: all of them for a
+    /// passthrough, only the compact summary for a fold.
+    pub(crate) fn kept_bytes(&self) -> usize {
+        match self {
+            StreamCapture::Passthrough(bytes) => bytes.len(),
+            StreamCapture::Folded(fold) => fold.kept_bytes,
+        }
+    }
+
+    pub(crate) fn is_folded(&self) -> bool {
+        matches!(self, StreamCapture::Folded(_))
+    }
+
+    /// Path to the full output on disk, if this stream folded.
+    pub(crate) fn fold_path(&self) -> Option<&std::path::Path> {
+        match self {
+            StreamCapture::Passthrough(_) => None,
+            StreamCapture::Folded(fold) => Some(&fold.path),
+        }
+    }
+}
+
 enum State {
     Buffering(Vec<u8>),
     Spilling(BufWriter<File>),
@@ -352,6 +385,30 @@ mod tests {
             s.tail.len()
         );
         assert!(matches!(s.state, State::Spilling(_)), "must have spilled");
+    }
+
+    #[test]
+    fn accessors_report_passthrough_bytes_before_emit_consumes_the_capture() {
+        let tmp = tempfile::tempdir().unwrap();
+        let raw = b"small output\n";
+        let capture = sink(tmp.path(), 1_000).pump(&raw[..]).unwrap();
+        assert!(!capture.is_folded());
+        assert_eq!(capture.raw_bytes(), raw.len());
+        assert_eq!(capture.kept_bytes(), raw.len());
+        assert!(capture.fold_path().is_none());
+    }
+
+    #[test]
+    fn accessors_report_folded_raw_and_kept_bytes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let raw: Vec<u8> = (0..40_000)
+            .flat_map(|i| format!("line {i}\n").into_bytes())
+            .collect();
+        let capture = sink(tmp.path(), 100).pump(&raw[..]).unwrap();
+        assert!(capture.is_folded());
+        assert_eq!(capture.raw_bytes(), raw.len());
+        assert!(capture.kept_bytes() < capture.raw_bytes());
+        assert!(capture.fold_path().is_some());
     }
 
     #[test]

@@ -12,7 +12,6 @@
 // rule, one token gate, one `Fold` constructor.
 mod config;
 pub(crate) mod paths;
-mod private_fs;
 pub(crate) mod rotate;
 mod slug;
 pub(crate) mod summary;

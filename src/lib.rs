@@ -5,8 +5,11 @@
 
 mod cli;
 mod fold;
+mod private_fs;
 mod runner;
+mod track;
 
 pub use cli::main_with;
 pub use fold::{Fold, FoldConfig, FoldOutcome, fold_output};
 pub use runner::{RunOutcome, run, status_to_exit_code};
+pub use track::TrackConfig;

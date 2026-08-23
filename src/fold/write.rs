@@ -11,7 +11,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::private_fs::{create_private_dir, open_private};
+use crate::private_fs::{create_private_dir, open_private};
+
 use super::rotate::cleanup_old_files;
 use super::slug::sanitize_slug;
 

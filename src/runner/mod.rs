@@ -25,6 +25,10 @@
 //!
 //! Nothing is a pty — pipes only. The isatty/colour difference that gives is
 //! inherent to any pipe wrapper and out of scope here.
+//!
+//! `run`/`run_with` also append one best-effort tracking row per invocation
+//! (`crate::track`) — an internal side effect, not part of the fold
+//! contract above.
 
 mod exit;
 mod spawn;

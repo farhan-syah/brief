@@ -12,6 +12,7 @@ use std::process::Command;
 
 use crate::fold::FoldConfig;
 use crate::runner::{basename, run_with};
+use crate::track::TrackConfig;
 
 use super::help::{help_text, version};
 use super::passthrough;
@@ -65,23 +66,31 @@ pub fn main_with(
     cmd.args(forwarded);
 
     if TARGETS.contains(&basename(&program).as_str()) {
-        dispatch_target(cmd, &program, &FoldConfig::from_env(), out, err)
+        dispatch_target(
+            cmd,
+            &program,
+            &FoldConfig::from_env(),
+            &TrackConfig::from_env(),
+            out,
+            err,
+        )
     } else {
         passthrough::run_passthrough(cmd, &program, err)
     }
 }
 
-/// Run a fold-target command under `cfg`. Split out from `main_with` so
-/// tests can drive the fold-gate wiring with an explicit `FoldConfig`
-/// instead of the real process environment.
+/// Run a fold-target command under `cfg`/`track_cfg`. Split out from
+/// `main_with` so tests can drive the fold-gate and tracking wiring with
+/// explicit configs instead of the real process environment.
 fn dispatch_target(
     cmd: Command,
     program: &OsString,
     cfg: &FoldConfig,
+    track_cfg: &TrackConfig,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
-    match run_with(cmd, cfg, out, err) {
+    match run_with(cmd, cfg, track_cfg, out, err) {
         Ok(outcome) => outcome.exit_code,
         Err(io_err) => passthrough::exit_code_for_spawn_error(&io_err, err, program),
     }
@@ -164,12 +173,18 @@ mod tests {
             directory: Some(fold_dir.clone()),
             ..FoldConfig::default()
         };
+        // Tracking is exercised in `runner::spawn`'s own tests; disabled
+        // here so this test isn't also asserting on a tracking file.
+        let track = TrackConfig {
+            enabled: false,
+            ..TrackConfig::default()
+        };
         let program = OsString::from("grep");
         let mut cmd = Command::new(&program);
         cmd.args(["match", big_file.to_str().unwrap()]);
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let code = dispatch_target(cmd, &program, &cfg, &mut out, &mut err);
+        let code = dispatch_target(cmd, &program, &cfg, &track, &mut out, &mut err);
         assert_eq!(code, 0);
         let printed = String::from_utf8(out).unwrap();
         assert!(
@@ -190,7 +205,7 @@ mod tests {
         cmd.args(["match", small_file.to_str().unwrap()]);
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let code = dispatch_target(cmd, &program, &cfg, &mut out, &mut err);
+        let code = dispatch_target(cmd, &program, &cfg, &track, &mut out, &mut err);
         assert_eq!(code, 0);
         assert_eq!(out, b"only match here\n");
     }
