@@ -6,17 +6,21 @@
 //! `sigfold grep -h` silently print sigfold's help instead of grep's — a
 //! correctness bug of exactly the kind this tool exists to avoid.
 //!
-//! The literal `argv[1]` value `report` is reserved the same way, for
-//! `sigfold report [...]` (see `crate::report`). The trade-off is the same
-//! one the flag reservations already accept: a program literally named
-//! `report` can no longer be run as `sigfold report`, only by path
-//! (`sigfold ./report`).
+//! The literal `argv[1]` values `report`, `hook`, and `init` are reserved
+//! the same way, for `sigfold report [...]` (see `crate::report`),
+//! `sigfold hook` (see `crate::hook`, the PreToolUse hook), and
+//! `sigfold init [...]` (see `crate::init`, its installer). The trade-off
+//! is the same one the flag reservations already accept: a program
+//! literally named `report`, `hook`, or `init` can no longer be run as
+//! `sigfold <name>`, only by path (e.g. `sigfold ./hook`).
 
 use std::ffi::OsString;
 use std::io::Write;
 use std::process::Command;
 
 use crate::fold::FoldConfig;
+use crate::hook;
+use crate::init;
 use crate::report;
 use crate::runner::{basename, run_with};
 use crate::track::TrackConfig;
@@ -76,6 +80,19 @@ pub fn main_with(
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         return report::run(&report_args, out, err);
+    }
+
+    if program.to_str() == Some("hook") {
+        let mut stdin = std::io::stdin();
+        return hook::run(&mut stdin, out, err);
+    }
+
+    if program.to_str() == Some("init") {
+        let init_args: Vec<String> = post_program[1..]
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        return init::run(&init_args, out, err);
     }
 
     let forwarded = &post_program[1..];
@@ -225,6 +242,24 @@ mod tests {
         let code = dispatch_target(cmd, &program, &cfg, &track, &mut out, &mut err);
         assert_eq!(code, 0);
         assert_eq!(out, b"only match here\n");
+    }
+
+    #[test]
+    fn init_literal_is_intercepted_before_the_target_dispatch() {
+        // `init` isn't a fold target, so this also proves the reserved
+        // literal is checked before the passthrough/target branch, not
+        // relying on TARGETS to keep it from falling through.
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let code = main_with(
+            argv(&["sigfold", "init", "--help"]).into_iter(),
+            &mut out,
+            &mut err,
+        );
+        assert_eq!(code, 0);
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("sigfold init"));
+        assert!(err.is_empty());
     }
 
     #[test]

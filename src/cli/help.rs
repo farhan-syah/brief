@@ -35,7 +35,17 @@ Environment overrides:
 
 `report` is reserved as argv[1] for `sigfold report [...]`, a falsifiable
 summary of the tracking data sigfold has recorded; see `sigfold report --help`.
-A program literally named `report` must be run by path: `sigfold ./report`.
+
+`hook` is reserved as argv[1] for `sigfold hook`, a Claude Code PreToolUse
+hook that rewrites plain grep/cat/find/rg Bash calls to go through sigfold,
+declining on anything it cannot confidently classify; see `sigfold init --help`
+to install it.
+
+`init` is reserved as argv[1] for `sigfold init [...]`, which installs or
+uninstalls that hook in Claude Code's settings.json; see `sigfold init --help`.
+
+A program literally named `report`, `hook`, or `init` must be run by path,
+e.g. `sigfold ./hook`.
 
 Usage: sigfold <program> [args...]
 ",

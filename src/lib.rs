@@ -5,9 +5,12 @@
 
 mod cli;
 mod fold;
+mod hook;
+mod init;
 mod private_fs;
 mod report;
 mod runner;
+mod text_offset;
 mod track;
 
 pub use cli::main_with;
