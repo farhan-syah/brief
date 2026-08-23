@@ -104,9 +104,17 @@ pub(crate) fn display_shell_path(path: &Path) -> String {
 /// (the `tail` offset into the omitted middle). Collapsed from two
 /// separate lines (rtk's `format_hint` + `format_tail_hint`) that used to
 /// repeat the same long path — see `Fold::render`.
+///
+/// Routed through `brief tail ...` rather than a bare `tail ...`: `tail`
+/// is not one of brief's fold targets (`crate::cli::dispatch::TARGETS`),
+/// so a bare `tail` following this hint runs untracked and brief never
+/// sees the recovery read. `brief tail` still runs `tail` exactly as
+/// before — `crate::cli::passthrough` forwards it with fully inherited
+/// stdio — but now brief's own argv-inspection can observe it touching the
+/// fold directory (see `crate::runner::args_read_fold_dir`) and record it.
 pub(crate) fn format_full_output_hint(path: &Path, line_offset: usize) -> String {
     format!(
-        "[full output: tail -n +{} {}]",
+        "[full output: brief tail -n +{} {}]",
         line_offset,
         display_shell_path(path)
     )
@@ -158,7 +166,7 @@ mod tests {
     fn format_full_output_hint_shape() {
         let path = PathBuf::from("/tmp/brief/folds/123_cargo_test.log");
         let hint = format_full_output_hint(&path, 51);
-        assert!(hint.starts_with("[full output: tail -n +51 "));
+        assert!(hint.starts_with("[full output: brief tail -n +51 "));
         assert!(hint.ends_with(']'));
         assert!(hint.contains("123_cargo_test.log"));
     }
@@ -223,7 +231,7 @@ mod tests {
 
         assert_eq!(
             hint,
-            "[full output: tail -n +22 \"$HOME/Library/Application Support/brief/folds/123_go_test.log\"]"
+            "[full output: brief tail -n +22 \"$HOME/Library/Application Support/brief/folds/123_go_test.log\"]"
         );
         assert!(
             !hint.contains("\\ "),

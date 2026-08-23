@@ -81,9 +81,23 @@ fn render_header(s: &mut String, window_label: &str, project: bool, load: &LoadR
     } else {
         format!("{in_window} of {}", plural(parsed, "row"))
     };
+    // A recovery read carries no measured byte counts, so it is excluded
+    // from the totals below. Naming it here is what lets a reader reconcile
+    // this row count with the smaller call count in the totals — otherwise
+    // the gap reads as a bug in the report.
+    let recovery = load.rows.iter().filter(|r| !r.captured).count();
+    let recovery_note = if recovery == 0 {
+        String::new()
+    } else {
+        format!(
+            " ({} recovery read{})",
+            recovery,
+            if recovery == 1 { "" } else { "s" }
+        )
+    };
     let _ = writeln!(
         s,
-        "brief report — {window_label}{project_note} · {counted} · {} malformed",
+        "brief report — {window_label}{project_note} · {counted}{recovery_note} · {} malformed",
         load.malformed
     );
 }
@@ -226,6 +240,7 @@ mod tests {
             stderr_kept_bytes: 0,
             stderr_folded: false,
             reads_fold: false,
+            captured: true,
         }
     }
 
@@ -239,6 +254,30 @@ mod tests {
         assert!(
             text.contains(&format!("Handled totals (1 call — {SCOPE_NOTE}):")),
             "scope note must be attached to the Handled totals line: {text}"
+        );
+    }
+
+    #[test]
+    fn header_names_recovery_reads_so_the_row_and_call_counts_reconcile() {
+        let mut measured = row("grep", 100, 10);
+        measured.stdout_folded = true;
+        let mut recovery = row("tail", 0, 0);
+        recovery.captured = false;
+        recovery.reads_fold = true;
+        let rows = vec![measured, recovery];
+        let l = LoadResult {
+            malformed: 0,
+            total_lines: 2,
+            rows,
+        };
+        let text = render("all time", false, &l, &ReportBody::Data(aggregate(&l.rows)));
+        assert!(
+            text.contains("2 rows (1 recovery read)"),
+            "the header must explain why the totals count fewer calls, got: {text}"
+        );
+        assert!(
+            text.contains("Handled totals (1 call"),
+            "an uncaptured row must not be counted as a measured call, got: {text}"
         );
     }
 

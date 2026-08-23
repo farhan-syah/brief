@@ -28,6 +28,13 @@ pub(crate) struct ReportRow {
     pub(crate) stderr_kept_bytes: u64,
     pub(crate) stderr_folded: bool,
     pub(crate) reads_fold: bool,
+    /// `false` only for a recovery-read row observed through inherited
+    /// stdio (`crate::cli::passthrough`), which carries no measured byte
+    /// counts. Absent on a row written before this field existed —
+    /// defaults to `true` so those 100-rows-in-the-wild keep parsing
+    /// unchanged, on the same reasoning as every other field this parser
+    /// treats as optional-with-a-safe-default.
+    pub(crate) captured: bool,
 }
 
 /// Parse one JSONL line (with or without its trailing newline) into a
@@ -49,6 +56,7 @@ pub(crate) fn parse_line(line: &str) -> Option<ReportRow> {
     let mut stderr_kept_bytes = None;
     let mut stderr_folded = None;
     let mut reads_fold = None;
+    let mut captured = None;
 
     for field in split_top_level(body) {
         let field = field.trim();
@@ -68,24 +76,50 @@ pub(crate) fn parse_line(line: &str) -> Option<ReportRow> {
             "stderr_kept_bytes" => stderr_kept_bytes = value_raw.trim().parse::<u64>().ok(),
             "stderr_folded" => stderr_folded = parse_bool(value_raw),
             "reads_fold" => reads_fold = parse_bool(value_raw),
+            "captured" => captured = parse_bool(value_raw),
             // "args", "stdout_path", "stderr_path", or a field a future
             // schema version added: skipped, not an error.
             _ => {}
         }
     }
 
+    // Absent on every row written before this field existed: default to
+    // `true` so those rows keep parsing exactly as they did before.
+    let captured = captured.unwrap_or(true);
+    // A captured row's byte counts are mandatory, same as always — missing
+    // one is corruption. An uncaptured row never had them to begin with
+    // (see `track::InvocationRecord`), so a missing one there just means
+    // "unknown," not "zero measured" — `0` here is a placeholder that
+    // `report::aggregate` is required to never read for such a row.
+    let (stdout_raw_bytes, stdout_kept_bytes, stderr_raw_bytes, stderr_kept_bytes) = if captured {
+        (
+            stdout_raw_bytes?,
+            stdout_kept_bytes?,
+            stderr_raw_bytes?,
+            stderr_kept_bytes?,
+        )
+    } else {
+        (
+            stdout_raw_bytes.unwrap_or(0),
+            stdout_kept_bytes.unwrap_or(0),
+            stderr_raw_bytes.unwrap_or(0),
+            stderr_kept_bytes.unwrap_or(0),
+        )
+    };
+
     Some(ReportRow {
         ts_ms: ts_ms?,
         program: program?,
         cwd,
         exit_code: exit_code?,
-        stdout_raw_bytes: stdout_raw_bytes?,
-        stdout_kept_bytes: stdout_kept_bytes?,
+        stdout_raw_bytes,
+        stdout_kept_bytes,
         stdout_folded: stdout_folded?,
-        stderr_raw_bytes: stderr_raw_bytes?,
-        stderr_kept_bytes: stderr_kept_bytes?,
+        stderr_raw_bytes,
+        stderr_kept_bytes,
         stderr_folded: stderr_folded?,
         reads_fold: reads_fold?,
+        captured,
     })
 }
 
@@ -214,15 +248,16 @@ mod tests {
             cwd: Some("/home/user/project".to_string()),
             exit_code: 0,
             exec_time_ms: 42,
-            stdout_raw_bytes: 1000,
-            stdout_kept_bytes: 200,
+            stdout_raw_bytes: Some(1000),
+            stdout_kept_bytes: Some(200),
             stdout_folded: true,
             stdout_path: Some("/tmp/brief/folds/1_grep.log".to_string()),
-            stderr_raw_bytes: 5,
-            stderr_kept_bytes: 5,
+            stderr_raw_bytes: Some(5),
+            stderr_kept_bytes: Some(5),
             stderr_folded: false,
             stderr_path: None,
             reads_fold: false,
+            captured: true,
         }
     }
 
@@ -241,6 +276,7 @@ mod tests {
         assert_eq!(row.stderr_kept_bytes, 5);
         assert!(!row.stderr_folded);
         assert!(!row.reads_fold);
+        assert!(row.captured);
     }
 
     #[test]
@@ -319,5 +355,45 @@ mod tests {
     fn trailing_newline_is_tolerated() {
         let line = format!("{}\n", base_record().to_line());
         assert!(parse_line(&line).is_some());
+    }
+
+    /// The on-disk format that exists today: a row written before the
+    /// `captured` field was added, with no `captured` key at all. It must
+    /// keep parsing exactly as before, and be treated as captured.
+    #[test]
+    fn row_without_captured_field_parses_and_defaults_to_captured() {
+        let line = r#"{"ts_ms":1,"program":"grep","exit_code":0,"stdout_raw_bytes":100,"stdout_kept_bytes":50,"stdout_folded":true,"stderr_raw_bytes":0,"stderr_kept_bytes":0,"stderr_folded":false,"reads_fold":false}"#;
+        let row = parse_line(line).expect("a pre-existing row must still parse");
+        assert!(
+            row.captured,
+            "a row with no captured field defaults to captured: true"
+        );
+        assert_eq!(row.stdout_raw_bytes, 100);
+    }
+
+    /// The shape `crate::cli::passthrough` actually writes for a recovery
+    /// read: `captured: false` and no byte-count fields at all.
+    #[test]
+    fn uncaptured_row_with_no_byte_fields_still_parses() {
+        let line = r#"{"ts_ms":1,"program":"tail","exit_code":0,"stdout_folded":false,"stderr_folded":false,"reads_fold":true,"captured":false}"#;
+        let row = parse_line(line).expect("an uncaptured row with no byte fields must parse");
+        assert!(!row.captured);
+        assert!(row.reads_fold);
+        assert_eq!(
+            row.stdout_raw_bytes, 0,
+            "no measured value defaults to 0 as a placeholder \
+            that aggregate.rs must never read for an uncaptured row"
+        );
+    }
+
+    /// A captured row is still held to the original contract: a missing
+    /// byte-count field is corruption, not "unknown."
+    #[test]
+    fn captured_row_missing_a_byte_field_is_still_malformed() {
+        let line = r#"{"ts_ms":1,"program":"grep","exit_code":0,"stdout_kept_bytes":50,"stdout_folded":true,"stderr_raw_bytes":0,"stderr_kept_bytes":0,"stderr_folded":false,"reads_fold":false,"captured":true}"#;
+        assert!(
+            parse_line(line).is_none(),
+            "a captured row missing stdout_raw_bytes must be rejected, not defaulted to 0"
+        );
     }
 }

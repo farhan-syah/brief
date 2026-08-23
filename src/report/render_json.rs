@@ -150,6 +150,7 @@ mod tests {
             stderr_kept_bytes: 0,
             stderr_folded: false,
             reads_fold: false,
+            captured: true,
         }
     }
 

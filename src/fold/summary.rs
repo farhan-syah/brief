@@ -419,7 +419,7 @@ mod tests {
         assert!(rendered.contains("line 0"), "must show head");
         assert!(rendered.contains("line 499"), "must show tail");
         assert!(rendered.contains("500"), "must state total line count");
-        assert!(rendered.contains("[full output: tail -n +"));
+        assert!(rendered.contains("[full output: brief tail -n +"));
         assert_eq!(
             rendered.matches(fold.path.to_str().unwrap()).count(),
             1,

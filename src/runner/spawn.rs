@@ -164,15 +164,8 @@ fn build_record(
     err_capture: &StreamCapture,
 ) -> InvocationRecord {
     let program = cmd.get_program().to_string_lossy().into_owned();
-    let args: Vec<String> = cmd
-        .get_args()
-        .map(|a| a.to_string_lossy().into_owned())
-        .collect();
-    let cwd = std::env::current_dir().ok();
-    let reads_fold = fold_dir.is_some_and(|dir| {
-        args.iter()
-            .any(|arg| arg_reads_fold_dir(arg, dir, cwd.as_deref()))
-    });
+    let (args, cwd) = cmd_args_and_cwd(cmd);
+    let reads_fold = args_read_fold_dir(&args, fold_dir, cwd.as_deref());
 
     InvocationRecord {
         ts_ms: track::now_ms(),
@@ -181,22 +174,56 @@ fn build_record(
         cwd: cwd.as_ref().map(|p| p.display().to_string()),
         exit_code,
         exec_time_ms,
-        stdout_raw_bytes: out_capture.raw_bytes(),
-        stdout_kept_bytes: out_capture.kept_bytes(),
+        stdout_raw_bytes: Some(out_capture.raw_bytes()),
+        stdout_kept_bytes: Some(out_capture.kept_bytes()),
         stdout_folded: out_capture.is_folded(),
         stdout_path: out_capture.fold_path().map(|p| p.display().to_string()),
-        stderr_raw_bytes: err_capture.raw_bytes(),
-        stderr_kept_bytes: err_capture.kept_bytes(),
+        stderr_raw_bytes: Some(err_capture.raw_bytes()),
+        stderr_kept_bytes: Some(err_capture.kept_bytes()),
         stderr_folded: err_capture.is_folded(),
         stderr_path: err_capture.fold_path().map(|p| p.display().to_string()),
         reads_fold,
+        captured: true,
     }
 }
 
-/// Whether `arg`, resolved as a path against `cwd`, lies inside `fold_dir`
-/// — i.e. this invocation is reading back a fold file a previous invocation
-/// wrote. This is inspection of the invocation's own argv, never a
-/// filesystem watch or atime probe.
+/// Collect a command's argv (lossily decoded to `String`) and the process's
+/// current directory — the two pieces every tracking-row builder needs from
+/// `cmd`/the environment, read once and identically. Shared by the
+/// fold-target path (`build_record`, above) and the non-target passthrough
+/// path (`crate::cli::passthrough`), so the two never collect these
+/// differently.
+pub(crate) fn cmd_args_and_cwd(cmd: &Command) -> (Vec<String>, Option<PathBuf>) {
+    let args = cmd
+        .get_args()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let cwd = std::env::current_dir().ok();
+    (args, cwd)
+}
+
+/// Whether any of `args`, each resolved as a path against `cwd`, lies
+/// inside `fold_dir` — i.e. this invocation is reading back a fold file a
+/// previous invocation wrote. This is inspection of the invocation's own
+/// argv, never a filesystem watch or atime probe.
+///
+/// Shared by both the fold-target path (`build_record`, above) and the
+/// non-target passthrough path (`crate::cli::passthrough`), so the
+/// detection logic exists in exactly one place: a non-target program
+/// naming a fold-file path is the recovery read the hint prescribes, and
+/// both call sites must classify it identically.
+pub(crate) fn args_read_fold_dir(
+    args: &[String],
+    fold_dir: Option<&Path>,
+    cwd: Option<&Path>,
+) -> bool {
+    let Some(fold_dir) = fold_dir else {
+        return false;
+    };
+    args.iter()
+        .any(|arg| arg_reads_fold_dir(arg, fold_dir, cwd))
+}
+
 fn arg_reads_fold_dir(arg: &str, fold_dir: &Path, cwd: Option<&Path>) -> bool {
     let path = PathBuf::from(arg);
     let resolved = if path.is_absolute() {

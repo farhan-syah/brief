@@ -34,18 +34,27 @@ pub(crate) struct InvocationRecord {
     pub(crate) cwd: Option<String>,
     pub(crate) exit_code: i32,
     pub(crate) exec_time_ms: u128,
-    pub(crate) stdout_raw_bytes: usize,
-    pub(crate) stdout_kept_bytes: usize,
+    /// `None` when this row has no measured byte count — a recovery-read
+    /// row (`captured: false`), never a stand-in for a measured zero.
+    pub(crate) stdout_raw_bytes: Option<usize>,
+    pub(crate) stdout_kept_bytes: Option<usize>,
     pub(crate) stdout_folded: bool,
     pub(crate) stdout_path: Option<String>,
-    pub(crate) stderr_raw_bytes: usize,
-    pub(crate) stderr_kept_bytes: usize,
+    pub(crate) stderr_raw_bytes: Option<usize>,
+    pub(crate) stderr_kept_bytes: Option<usize>,
     pub(crate) stderr_folded: bool,
     pub(crate) stderr_path: Option<String>,
     /// Whether any argument, resolved as a path, lies inside the resolved
     /// fold directory — see the module doc comment for what this can and
     /// cannot observe.
     pub(crate) reads_fold: bool,
+    /// `false` for a row observed only through inherited stdio (a
+    /// non-target invocation whose argv touched the fold directory — the
+    /// recovery read the hint prescribes). Such a row has no measured byte
+    /// counts and must never enter the handled-totals math; see
+    /// `report::aggregate`. Absent on rows written before this field
+    /// existed, which `report::parse` treats as `true`.
+    pub(crate) captured: bool,
 }
 
 /// Milliseconds since the Unix epoch, `0` if the clock is before it.
@@ -98,19 +107,28 @@ impl InvocationRecord {
         }
         fields.push(format!("\"exit_code\":{}", self.exit_code));
         fields.push(format!("\"exec_time_ms\":{}", self.exec_time_ms));
-        fields.push(format!("\"stdout_raw_bytes\":{}", self.stdout_raw_bytes));
-        fields.push(format!("\"stdout_kept_bytes\":{}", self.stdout_kept_bytes));
+        if let Some(n) = self.stdout_raw_bytes {
+            fields.push(format!("\"stdout_raw_bytes\":{n}"));
+        }
+        if let Some(n) = self.stdout_kept_bytes {
+            fields.push(format!("\"stdout_kept_bytes\":{n}"));
+        }
         fields.push(format!("\"stdout_folded\":{}", self.stdout_folded));
         if let Some(path) = &self.stdout_path {
             fields.push(format!("\"stdout_path\":{}", json_string(path)));
         }
-        fields.push(format!("\"stderr_raw_bytes\":{}", self.stderr_raw_bytes));
-        fields.push(format!("\"stderr_kept_bytes\":{}", self.stderr_kept_bytes));
+        if let Some(n) = self.stderr_raw_bytes {
+            fields.push(format!("\"stderr_raw_bytes\":{n}"));
+        }
+        if let Some(n) = self.stderr_kept_bytes {
+            fields.push(format!("\"stderr_kept_bytes\":{n}"));
+        }
         fields.push(format!("\"stderr_folded\":{}", self.stderr_folded));
         if let Some(path) = &self.stderr_path {
             fields.push(format!("\"stderr_path\":{}", json_string(path)));
         }
         fields.push(format!("\"reads_fold\":{}", self.reads_fold));
+        fields.push(format!("\"captured\":{}", self.captured));
         format!("{{{}}}\n", fields.join(","))
     }
 }
@@ -164,15 +182,16 @@ mod tests {
             cwd: Some("/home/user/project".to_string()),
             exit_code: 0,
             exec_time_ms: 42,
-            stdout_raw_bytes: 1000,
-            stdout_kept_bytes: 200,
+            stdout_raw_bytes: Some(1000),
+            stdout_kept_bytes: Some(200),
             stdout_folded: true,
             stdout_path: Some("/tmp/brief/folds/1_grep.log".to_string()),
-            stderr_raw_bytes: 0,
-            stderr_kept_bytes: 0,
+            stderr_raw_bytes: Some(0),
+            stderr_kept_bytes: Some(0),
             stderr_folded: false,
             stderr_path: None,
             reads_fold: false,
+            captured: true,
         }
     }
 
@@ -256,5 +275,27 @@ mod tests {
     #[test]
     fn now_ms_is_nonzero_at_present_day() {
         assert!(now_ms() > 0);
+    }
+
+    #[test]
+    fn uncaptured_row_omits_unknown_byte_counts_rather_than_inventing_zero() {
+        let mut rec = base_record();
+        rec.captured = false;
+        rec.stdout_raw_bytes = None;
+        rec.stdout_kept_bytes = None;
+        rec.stderr_raw_bytes = None;
+        rec.stderr_kept_bytes = None;
+        let line = rec.to_line();
+        assert!(!line.contains("\"stdout_raw_bytes\":"));
+        assert!(!line.contains("\"stdout_kept_bytes\":"));
+        assert!(!line.contains("\"stderr_raw_bytes\":"));
+        assert!(!line.contains("\"stderr_kept_bytes\":"));
+        assert!(line.contains("\"captured\":false"));
+    }
+
+    #[test]
+    fn captured_row_always_states_captured_true() {
+        let line = base_record().to_line();
+        assert!(line.contains("\"captured\":true"));
     }
 }

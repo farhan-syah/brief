@@ -21,11 +21,12 @@ pub(crate) const SCOPE_FULL: &str = "Scope: only grep, cat, find, and rg calls a
 
 /// Inline form: why the re-read count is a floor, not a measurement.
 pub(crate) const LOWER_BOUND_SHORT: &str =
-    "lower bound: only catches re-reads that go back through brief's own argv";
+    "lower bound: only catches a re-read that goes back through brief's own argv";
 
 /// Standalone form of the same fact.
-pub(crate) const LOWER_BOUND_FULL: &str = "Lower bound: the re-read count only catches re-reads that go \
-     back through brief's own argv. A plain shell cat of a fold file is invisible to it.";
+pub(crate) const LOWER_BOUND_FULL: &str = "Lower bound: the re-read count only catches a re-read that \
+     goes back through brief's own argv — including the `brief tail ...` the fold hint prescribes. \
+     A re-read that bypasses brief entirely (a plain shell tail, an editor, a pager) is invisible to it.";
 
 #[cfg(test)]
 mod tests {

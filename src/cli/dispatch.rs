@@ -109,7 +109,13 @@ pub fn main_with(
             err,
         )
     } else {
-        passthrough::run_passthrough(cmd, &program, err)
+        passthrough::run_passthrough(
+            cmd,
+            &program,
+            &FoldConfig::from_env(),
+            &TrackConfig::from_env(),
+            err,
+        )
     }
 }
 

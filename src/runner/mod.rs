@@ -40,4 +40,4 @@ pub use spawn::{RunOutcome, run};
 // through the same fold-gated path the public `run` uses, with explicit
 // `out`/`err` destinations, and needs the same basename logic `spawn`
 // already uses to slug a fold file.
-pub(crate) use spawn::{basename, run_with};
+pub(crate) use spawn::{args_read_fold_dir, basename, cmd_args_and_cwd, run_with};

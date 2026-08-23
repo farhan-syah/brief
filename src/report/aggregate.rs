@@ -100,9 +100,31 @@ pub(crate) fn aggregate(rows: &[ReportRow]) -> ReportSummary {
     let mut reread_rows = 0usize;
     let mut folded_rows = 0usize;
     let mut nonzero_exit_count = 0usize;
+    let mut captured_row_count = 0usize;
     let mut by_program: HashMap<&str, ProgramAcc> = HashMap::new();
 
     for row in rows {
+        // Re-read signal fires for every row that read a fold file back,
+        // whether it was itself a captured fold-target invocation or an
+        // uncaptured recovery read observed only through argv (see
+        // `crate::cli::passthrough`) — this is the one place brief can
+        // observe the hint being followed.
+        if row.reads_fold {
+            reread_rows += 1;
+        }
+
+        if !row.captured {
+            // No measured byte counts. Must never enter the handled
+            // totals, concentration, or per-program math — an uncaptured
+            // row's numeric fields don't even exist on disk (see
+            // `track::InvocationRecord`), and inventing zeros here would
+            // inflate the call count and drag the denominator with
+            // fabricated data, reintroducing the exact defect this tool
+            // was built to avoid. Counted only in `reread_rows` above.
+            continue;
+        }
+        captured_row_count += 1;
+
         let row_raw = row.stdout_raw_bytes + row.stderr_raw_bytes;
         let row_kept = row.stdout_kept_bytes + row.stderr_kept_bytes;
         let row_folded = row.stdout_folded || row.stderr_folded;
@@ -112,19 +134,9 @@ pub(crate) fn aggregate(rows: &[ReportRow]) -> ReportSummary {
         if row_folded {
             folded_rows += 1;
         }
-        // Correction 1: never add re-read bytes into `kept`/`raw_bytes`.
-        // A re-reading invocation is itself a fold-target row already
-        // counted in the totals above (its own stdout_raw/kept_bytes), so
-        // adding its bytes again here would double-count the exact bytes
-        // the savings percentage is built from. The honest cost figure is
-        // a rate against folds, computed below from `reread_rows` /
-        // `folded_rows` — never a byte sum.
-        if row.reads_fold {
-            reread_rows += 1;
-        }
-        // Correction 2: a non-zero exit is not excluded from the totals
-        // above — `grep`/`rg` exit 1 on "no match," a normal outcome, not
-        // a failure. It is only ever counted here, for context.
+        // A non-zero exit is not excluded from the totals above —
+        // `grep`/`rg` exit 1 on "no match," a normal outcome, not a
+        // failure. It is only ever counted here, for context.
         if row.exit_code != 0 {
             nonzero_exit_count += 1;
         }
@@ -165,9 +177,10 @@ pub(crate) fn aggregate(rows: &[ReportRow]) -> ReportSummary {
             .then_with(|| a.program.cmp(&b.program))
     });
 
-    let concentration = if rows.len() >= MIN_ROWS_FOR_CONCENTRATION {
+    let concentration = if captured_row_count >= MIN_ROWS_FOR_CONCENTRATION {
         let mut per_row_raw: Vec<u64> = rows
             .iter()
+            .filter(|r| r.captured)
             .map(|r| r.stdout_raw_bytes + r.stderr_raw_bytes)
             .collect();
         per_row_raw.sort_unstable_by(|a, b| b.cmp(a));
@@ -181,7 +194,7 @@ pub(crate) fn aggregate(rows: &[ReportRow]) -> ReportSummary {
     };
 
     ReportSummary {
-        row_count: rows.len(),
+        row_count: captured_row_count,
         raw_bytes,
         kept_bytes,
         set_aside_pct: reduction_pct(raw_bytes, kept_bytes),
@@ -301,6 +314,29 @@ mod tests {
             stderr_kept_bytes: 0,
             stderr_folded: false,
             reads_fold,
+            captured: true,
+        }
+    }
+
+    /// A recovery-read row: no measured bytes, `reads_fold: true`,
+    /// `captured: false`. Byte fields are `0` only because `ReportRow`
+    /// keeps them non-optional and `captured: false` rows must never let
+    /// those numbers reach the math below — the aggregation tests here
+    /// exist to prove that.
+    fn uncaptured_row(program: &str) -> ReportRow {
+        ReportRow {
+            ts_ms: 0,
+            program: program.to_string(),
+            cwd: None,
+            exit_code: 0,
+            stdout_raw_bytes: 0,
+            stdout_kept_bytes: 0,
+            stdout_folded: false,
+            stderr_raw_bytes: 0,
+            stderr_kept_bytes: 0,
+            stderr_folded: false,
+            reads_fold: true,
+            captured: false,
         }
     }
 
@@ -419,5 +455,61 @@ mod tests {
         assert_eq!(grep.raw_bytes, 2000);
         assert_eq!(grep.kept_bytes, 1200);
         assert!((grep.reduction_pct - 40.0).abs() < 1e-9);
+    }
+
+    /// An uncaptured recovery-read row (`captured: false`) must be counted
+    /// only in the re-read statistics — never in `row_count`, `raw_bytes`,
+    /// `kept_bytes`, or the per-program table. This is the fix for the
+    /// original defect: a recovery read now finally FIRES `reads_fold`
+    /// (routed through `brief tail`), and it must not also inflate the
+    /// handled-totals math with a fabricated row.
+    #[test]
+    fn uncaptured_row_excluded_from_handled_totals_but_counted_as_a_reread() {
+        let rows = vec![
+            row("grep", 1000, 200, true, false, 0), // the fold itself
+            uncaptured_row("tail"),                 // the recovery read
+        ];
+        let summary = aggregate(&rows);
+
+        assert_eq!(
+            summary.row_count, 1,
+            "the uncaptured row must not inflate the handled call count"
+        );
+        assert_eq!(summary.raw_bytes, 1000, "no fabricated bytes added");
+        assert_eq!(summary.kept_bytes, 200, "no fabricated bytes added");
+        assert!(
+            summary.programs.iter().all(|p| p.program != "tail"),
+            "an uncaptured row must not appear in the per-program table"
+        );
+
+        assert_eq!(
+            summary.reread.folded_rows, 1,
+            "the denominator stays the number of folded calls"
+        );
+        assert_eq!(
+            summary.reread.reread_rows, 1,
+            "the uncaptured row's reads_fold must still count as a re-read"
+        );
+        assert_eq!(summary.reread.rate(), Some(100.0));
+    }
+
+    /// The same uncaptured row must not leak into the concentration
+    /// breakdown either, even when there are enough rows to trigger it.
+    #[test]
+    fn uncaptured_rows_excluded_from_concentration_sample() {
+        let mut rows: Vec<ReportRow> = (0..19)
+            .map(|_| row("grep", 1, 1, false, false, 0))
+            .collect();
+        rows.push(row("grep", 1000, 1000, false, false, 0)); // 20th captured row
+        rows.push(uncaptured_row("tail")); // must not count toward the sample
+
+        let summary = aggregate(&rows);
+        let conc = summary
+            .concentration
+            .expect("20 captured rows must still produce a breakdown");
+        assert_eq!(
+            conc.top1.rows, 1,
+            "the uncaptured row must not be counted into the sample size"
+        );
     }
 }

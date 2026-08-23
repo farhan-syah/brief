@@ -105,15 +105,16 @@ mod tests {
             cwd: cwd.map(str::to_string),
             exit_code: 0,
             exec_time_ms: 1,
-            stdout_raw_bytes: 100,
-            stdout_kept_bytes: 100,
+            stdout_raw_bytes: Some(100),
+            stdout_kept_bytes: Some(100),
             stdout_folded: false,
             stdout_path: None,
-            stderr_raw_bytes: 0,
-            stderr_kept_bytes: 0,
+            stderr_raw_bytes: Some(0),
+            stderr_kept_bytes: Some(0),
             stderr_folded: false,
             stderr_path: None,
             reads_fold: false,
+            captured: true,
         }
     }
 

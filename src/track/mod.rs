@@ -11,12 +11,18 @@
 //! outside brief) is not observable here, so `reads_fold` undercounts
 //! re-reads rather than over-claiming them.
 //!
-//! Only the fold-target programs (`crate::cli`'s target list) are captured,
-//! so only they produce a row. Everything else runs with fully inherited
-//! stdio, which brief never observes and therefore cannot measure. That
-//! makes the sum of `*_raw_bytes` over every row the denominator for
-//! "output brief handled", not "output the machine produced" — a report
-//! built on these rows must not claim the latter.
+//! Only the fold-target programs (`crate::cli`'s target list) are captured
+//! (`captured: true`, with measured byte counts). Everything else runs with
+//! fully inherited stdio, which brief never observes and therefore cannot
+//! measure — except that a non-target invocation whose own argv reads back
+//! a fold file (the `brief tail ...` the fold hint prescribes) still
+//! produces an uncaptured row (`captured: false`, no byte counts) so that
+//! recovery read is visible in `reads_fold`; see `crate::cli::passthrough`.
+//! That makes the sum of `*_raw_bytes` over every *captured* row the
+//! denominator for "output brief handled", not "output the machine
+//! produced" — a report built on these rows must not claim the latter, and
+//! `report::aggregate` must never let an uncaptured row's absent bytes
+//! leak into that sum.
 //!
 //! The tracking file is hard-bounded at `TrackConfig::compact_trigger_bytes`
 //! (40 MiB by default — see `retention`) no matter how heavily the tool is
