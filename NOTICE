@@ -1,0 +1,5 @@
+sigfold
+
+Portions of src/fold/ are ported from rtk (https://github.com/rtk-ai/rtk),
+Copyright the rtk authors, licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.
