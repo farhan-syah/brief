@@ -3,10 +3,19 @@
 //! rtk's historical token-savings database.
 //! Source: reference/rtk/src/core/tracking.rs
 
-/// Estimate token count from byte length: ~4 chars/token, rounded up so a
+/// Estimate token count from a byte count: ~4 chars/token, rounded up so a
 /// borderline output is never under-counted into passthrough.
+///
+/// Takes a length rather than text so the streaming runner can gate on a
+/// running byte counter — it sees arbitrary bytes, never a `str`, and must
+/// decide before it has (or ever will have) a UTF-8 view of the output.
+pub(crate) fn estimate_tokens_len(bytes: usize) -> usize {
+    (bytes as f64 / 4.0).ceil() as usize
+}
+
+/// Estimate token count of `text` from its byte length.
 pub(crate) fn estimate_tokens(text: &str) -> usize {
-    (text.len() as f64 / 4.0).ceil() as usize
+    estimate_tokens_len(text.len())
 }
 
 #[cfg(test)]
@@ -33,5 +42,12 @@ mod tests {
         assert_eq!(estimate_tokens(&"x".repeat(99_996)), 24_999);
         assert_eq!(estimate_tokens(&"x".repeat(99_993)), 24_999);
         assert_eq!(estimate_tokens(&"x".repeat(99_992)), 24_998);
+    }
+
+    #[test]
+    fn len_wrapper_agrees_with_text_form() {
+        for n in [0usize, 1, 4, 5, 99_993, 100_000] {
+            assert_eq!(estimate_tokens_len(n), estimate_tokens(&"x".repeat(n)));
+        }
     }
 }

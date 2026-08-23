@@ -12,13 +12,13 @@ use super::tokens::estimate_tokens;
 use super::write::write_fold_file;
 
 /// Lines kept from the start of output when folding.
-const HEAD_LINES: usize = 50;
+pub(crate) const HEAD_LINES: usize = 50;
 /// Lines kept from the end of output when folding.
-const TAIL_LINES: usize = 50;
+pub(crate) const TAIL_LINES: usize = 50;
 /// Byte cap per kept slice (head/tail), guarding against a single huge
 /// line (e.g. minified JSON) defeating the line-based split and making
 /// the "compact" fold as large as the raw output.
-const SLICE_MAX_BYTES: usize = 8_000;
+pub(crate) const SLICE_MAX_BYTES: usize = 8_000;
 
 /// Result of a fold attempt.
 #[derive(Debug, Clone)]
@@ -50,6 +50,48 @@ pub struct Fold {
 }
 
 impl Fold {
+    /// THE single constructor for a `Fold`. Every producer goes through it —
+    /// the in-memory `fold_output` and the streaming runner alike — so
+    /// `head`/`tail`/`kept_bytes` semantics and what `render` prints can
+    /// never drift between the two paths.
+    ///
+    /// `head_region` must contain at least the first `HEAD_LINES` lines or
+    /// the first `SLICE_MAX_BYTES` bytes of the output, whichever ends
+    /// first; `tail_region` must contain at least its last `TAIL_LINES`
+    /// lines or last `SLICE_MAX_BYTES` bytes. Both may be the whole output
+    /// (in-memory path) or bounded windows of it (streaming path) — the
+    /// selection below reads no further than those guarantees.
+    ///
+    /// Regions are raw bytes: child output is arbitrary and may not be
+    /// UTF-8. Only these small previews are lossily decoded; the persisted
+    /// file and the passthrough path never are.
+    pub(crate) fn from_regions(
+        head_region: &[u8],
+        tail_region: &[u8],
+        total_lines: usize,
+        raw_bytes: usize,
+        path: PathBuf,
+    ) -> Fold {
+        let head_take = HEAD_LINES.min(total_lines);
+        // Subtracting the head's share first is what keeps head and tail from
+        // overlapping when the output has fewer than HEAD_LINES + TAIL_LINES
+        // lines (e.g. one huge minified line).
+        let tail_take = total_lines.saturating_sub(head_take).min(TAIL_LINES);
+
+        let head = lossy_prefix(first_lines(head_region, head_take), SLICE_MAX_BYTES);
+        let tail = lossy_suffix(last_lines(tail_region, tail_take), SLICE_MAX_BYTES);
+        let kept_bytes = head.len() + tail.len();
+
+        Fold {
+            head,
+            tail,
+            total_lines,
+            path,
+            raw_bytes,
+            kept_bytes,
+        }
+    }
+
     /// Render a compact human/agent-readable block: head, an omission
     /// marker with the total line count, tail, then the recovery
     /// pointer — the full-output path and a `tail` command to see what
@@ -99,25 +141,127 @@ pub fn fold_output(raw: &str, slug: &str, cfg: &FoldConfig) -> io::Result<FoldOu
             "no fold directory available (no data_local_dir on this platform)",
         )
     })?;
-    let path = write_fold_file(raw, slug, &dir, cfg.max_files)?;
+    let bytes = raw.as_bytes();
+    let path = write_fold_file(bytes, slug, &dir, cfg.max_files)?;
 
-    let lines: Vec<&str> = raw.lines().collect();
-    let total_lines = lines.len();
-    let head_take = HEAD_LINES.min(total_lines);
-    let tail_start = total_lines.saturating_sub(TAIL_LINES).max(head_take);
-
-    let head = take_prefix_bytes(&lines[..head_take].join("\n"), SLICE_MAX_BYTES);
-    let tail = take_suffix_bytes(&lines[tail_start..].join("\n"), SLICE_MAX_BYTES);
-    let kept_bytes = head.len() + tail.len();
-
-    Ok(FoldOutcome::Folded(Fold {
-        head,
-        tail,
-        total_lines,
+    // Whole output as both regions: it is already in memory here, and
+    // `from_regions` reads no further into either than it needs to.
+    Ok(FoldOutcome::Folded(Fold::from_regions(
+        bytes,
+        bytes,
+        count_lines(bytes),
+        bytes.len(),
         path,
-        raw_bytes: raw.len(),
-        kept_bytes,
-    }))
+    )))
+}
+
+/// Total line count of `bytes`, defined as the newline count plus a final
+/// unterminated line if there is one. Identical to `str::lines().count()`
+/// for valid UTF-8, but computable from a running counter, which is what
+/// the streaming runner needs — it counts `\n` per chunk and never
+/// materializes a line.
+pub(crate) fn count_lines(bytes: &[u8]) -> usize {
+    total_lines_from(
+        bytes.iter().filter(|b| **b == b'\n').count(),
+        bytes.last().copied(),
+    )
+}
+
+/// `count_lines` in incremental form: newlines seen so far plus the last
+/// byte seen. The streaming runner keeps exactly these two values.
+pub(crate) fn total_lines_from(newlines: usize, last_byte: Option<u8>) -> usize {
+    match last_byte {
+        Some(b'\n') | None => newlines,
+        // Trailing bytes after the last newline are one more (unterminated) line.
+        Some(_) => newlines + 1,
+    }
+}
+
+/// First `n` lines of `bytes`, without the newline that terminates line `n`.
+/// Returns everything when `bytes` holds fewer than `n` newlines — including
+/// a trailing partial line, which is what a byte-bounded head window has.
+fn first_lines(bytes: &[u8], n: usize) -> &[u8] {
+    if n == 0 {
+        return &[];
+    }
+    let mut seen = 0;
+    for (i, b) in bytes.iter().enumerate() {
+        if *b == b'\n' {
+            seen += 1;
+            if seen == n {
+                return &bytes[..i];
+            }
+        }
+    }
+    bytes
+}
+
+/// Last `n` lines of `bytes`, without a trailing newline. One trailing
+/// newline is dropped first so `"a\nb\n"` with `n == 1` yields `"b"`, not an
+/// empty final line.
+fn last_lines(bytes: &[u8], n: usize) -> &[u8] {
+    if n == 0 {
+        return &[];
+    }
+    let end = match bytes.last() {
+        Some(b'\n') => bytes.len() - 1,
+        _ => bytes.len(),
+    };
+    let body = &bytes[..end];
+    let mut seen = 0;
+    for i in (0..body.len()).rev() {
+        if body[i] == b'\n' {
+            seen += 1;
+            if seen == n {
+                return &body[i + 1..];
+            }
+        }
+    }
+    body
+}
+
+/// Decode at most `max_bytes` from the start of `bytes` for display.
+///
+/// A multi-byte char straddling the cap is dropped rather than turned into
+/// U+FFFD, so a clean cut of valid UTF-8 stays clean. Genuinely invalid
+/// bytes still decode lossily — the preview must never fail on binary
+/// output — and the result is re-capped afterwards because each U+FFFD is
+/// wider than the byte it replaces.
+fn lossy_prefix(bytes: &[u8], max_bytes: usize) -> String {
+    let slice = &bytes[..max_bytes.min(bytes.len())];
+    let end = match std::str::from_utf8(slice) {
+        Ok(_) => slice.len(),
+        // error_len None means "valid so far, sequence cut off at the end".
+        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+        Err(_) => slice.len(),
+    };
+    let text = String::from_utf8_lossy(&slice[..end]).into_owned();
+    if text.len() <= max_bytes {
+        return text;
+    }
+    take_prefix_bytes(&text, max_bytes)
+}
+
+/// Decode at most `max_bytes` from the end of `bytes` for display. Mirror of
+/// `lossy_prefix`: leading continuation bytes left by the cut are dropped.
+fn lossy_suffix(bytes: &[u8], max_bytes: usize) -> String {
+    let start = bytes.len().saturating_sub(max_bytes);
+    let mut slice = &bytes[start..];
+    // A UTF-8 continuation byte is 0b10xxxxxx and can never start a char; at
+    // most three of them precede the first real boundary. Applied even at
+    // start == 0, because a byte-bounded tail window can itself begin
+    // mid-char. Well-formed text is unaffected.
+    let skip = slice
+        .iter()
+        .take(3)
+        .take_while(|b| (**b & 0b1100_0000) == 0b1000_0000)
+        .count();
+    slice = &slice[skip..];
+    let text = String::from_utf8_lossy(slice).into_owned();
+    if text.len() <= max_bytes {
+        return text;
+    }
+    take_suffix_bytes(&text, max_bytes)
 }
 
 /// Keep at most `max_bytes` from the start of `s`, cut on a UTF-8 char
@@ -288,6 +432,69 @@ mod tests {
         let suffix = take_suffix_bytes(&japanese, 998);
         assert!(suffix.len() <= 998);
         assert!(japanese.ends_with(&suffix));
+    }
+
+    #[test]
+    fn count_lines_matches_str_lines_count() {
+        for raw in ["", "a", "a\n", "a\nb", "a\nb\n", "a\n\n", "\n", "\n\n"] {
+            assert_eq!(
+                count_lines(raw.as_bytes()),
+                raw.lines().count(),
+                "count_lines disagrees with str::lines on {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn first_and_last_lines_select_without_terminators() {
+        let raw = b"a\nb\nc\n";
+        assert_eq!(first_lines(raw, 0), b"");
+        assert_eq!(first_lines(raw, 2), b"a\nb");
+        assert_eq!(
+            first_lines(raw, 9),
+            raw.as_slice(),
+            "fewer lines than asked: take all"
+        );
+        assert_eq!(last_lines(raw, 0), b"");
+        assert_eq!(last_lines(raw, 1), b"c");
+        assert_eq!(last_lines(raw, 2), b"b\nc");
+        assert_eq!(last_lines(b"a\nb", 1), b"b");
+    }
+
+    #[test]
+    fn lossy_slices_never_exceed_the_cap_on_invalid_utf8() {
+        // Every byte is invalid UTF-8 and expands to a 3-byte U+FFFD.
+        let junk = vec![0xffu8; 100];
+        assert!(lossy_prefix(&junk, 12).len() <= 12);
+        assert!(lossy_suffix(&junk, 12).len() <= 12);
+    }
+
+    #[test]
+    fn lossy_prefix_drops_a_char_cut_by_the_cap() {
+        let text = "ab\u{6F22}cd"; // 'a','b', 3-byte char, 'c','d'
+        // Cap 3 lands inside the multi-byte char: drop it, do not pad U+FFFD.
+        assert_eq!(lossy_prefix(text.as_bytes(), 3), "ab");
+    }
+
+    #[test]
+    fn streaming_and_in_memory_regions_produce_the_same_fold() {
+        // The single-constructor guarantee: bounded windows (what the runner
+        // keeps) and the whole buffer must yield an identical Fold.
+        let raw: String = (0..500).map(|i| format!("line {i}\n")).collect();
+        let bytes = raw.as_bytes();
+        let total = count_lines(bytes);
+        let path = PathBuf::from("/tmp/x.log");
+
+        let whole = Fold::from_regions(bytes, bytes, total, bytes.len(), path.clone());
+        let head_window = &bytes[..SLICE_MAX_BYTES.min(bytes.len())];
+        let tail_window = &bytes[bytes.len().saturating_sub(2 * SLICE_MAX_BYTES)..];
+        let windowed =
+            Fold::from_regions(head_window, tail_window, total, bytes.len(), path.clone());
+
+        assert_eq!(whole.head, windowed.head);
+        assert_eq!(whole.tail, windowed.tail);
+        assert_eq!(whole.kept_bytes, windowed.kept_bytes);
+        assert_eq!(whole.render(), windowed.render());
     }
 
     #[test]

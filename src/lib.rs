@@ -4,5 +4,7 @@
 //! ever destroyed.
 
 mod fold;
+mod runner;
 
 pub use fold::{Fold, FoldConfig, FoldOutcome, fold_output};
+pub use runner::{RunOutcome, run};
