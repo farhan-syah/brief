@@ -4,8 +4,12 @@
 //! for argv parsing, `fs_ops` for home-directory resolution, backup,
 //! atomic write, and `--dry-run` gating (hook install/uninstall),
 //! `settings_edit` for the pure text transform against a known JSON
-//! shape, `shims` for the pure shim-script template and marker, and
-//! `shim_fs` for writing/removing shim files on disk.
+//! shape, `shims` for the pure shim-script template and marker,
+//! `shim_fs` for writing/removing shim files on disk, and `interactive`
+//! for the terminal-only prompted flow that gates the plain (no-flags)
+//! install behind a preview and a confirm — see `cli::run_with`'s
+//! decision for exactly when that flow, rather than an immediate
+//! install, runs.
 //!
 //! This edits a user's live config or PATH-visible files, so it is held
 //! to a higher bar than the rest of the crate: never a hardcoded home
@@ -17,6 +21,7 @@
 
 mod cli;
 mod fs_ops;
+mod interactive;
 mod settings_edit;
 mod shim_fs;
 mod shims;
