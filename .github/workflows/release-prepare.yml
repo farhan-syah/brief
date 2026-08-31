@@ -1,4 +1,5 @@
 name: Release Prepare
+run-name: Release Prepare ${{ github.ref_name }}
 
 on:
   push:
