@@ -1,14 +1,14 @@
-//! Passthrough path for every command brief does not fold: stdin, stdout,
+//! Passthrough path for every command ogt does not fold: stdin, stdout,
 //! and stderr are fully inherited from this process and the child's status
 //! is translated and returned unchanged. This is not `run()` with folding
 //! disabled — that would still pipe both streams and hold them until the
 //! child exits, breaking tty detection, colour, and incremental progress
-//! output for every one of the ~99.56% of commands brief should never
+//! output for every one of the ~99.56% of commands ogt should never
 //! observably touch.
 //!
 //! One thing IS observed, best-effort and after the fact: if this
 //! non-target invocation's own argv names a path inside the fold directory,
-//! it is the recovery read `format_full_output_hint` prescribes (`brief
+//! it is the recovery read `format_full_output_hint` prescribes (`ogt
 //! tail -n +N <fold file>`) — see `crate::runner::args_read_fold_dir`,
 //! shared with the fold-target path so the detection logic lives in one
 //! place. That row carries no measured byte counts (`captured: false`;
@@ -109,7 +109,7 @@ pub(crate) fn exit_code_for_spawn_error(
         io::ErrorKind::PermissionDenied => 126,
         _ => 126,
     };
-    let _ = writeln!(err, "brief: {}: {io_err}", program.to_string_lossy());
+    let _ = writeln!(err, "ogt: {}: {io_err}", program.to_string_lossy());
     code
 }
 

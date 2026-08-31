@@ -20,7 +20,7 @@ pub struct FoldConfig {
     /// out first, the file just written always survives.
     pub max_files: usize,
     /// Fold directory override. `None` resolves to
-    /// `dirs::data_local_dir()/brief/folds`, or the `BRIEF_FOLD_DIR`
+    /// `dirs::data_local_dir()/ogt/folds`, or the `OGT_FOLD_DIR`
     /// env var if set (env wins over this field).
     pub directory: Option<PathBuf>,
 }
@@ -37,10 +37,10 @@ impl Default for FoldConfig {
 }
 
 impl FoldConfig {
-    /// `Default`, layered with env var overrides: `BRIEF_THRESHOLD_TOKENS`
-    /// (usize) and `BRIEF_ENABLED`/`BRIEF` (`0`/`false` disables).
+    /// `Default`, layered with env var overrides: `OGT_THRESHOLD_TOKENS`
+    /// (usize) and `OGT_ENABLED`/`OGT` (`0`/`false` disables).
     /// `directory` stays `None` — `paths::resolve_fold_dir` reads
-    /// `BRIEF_FOLD_DIR` itself, at the point the fold directory is
+    /// `OGT_FOLD_DIR` itself, at the point the fold directory is
     /// actually needed.
     pub fn from_env() -> Self {
         let mut cfg = Self::from_env_with(&mut io::stderr(), |key| std::env::var(key).ok());
@@ -63,46 +63,46 @@ impl FoldConfig {
     ) -> Self {
         let mut cfg = Self::default();
 
-        if let Some(val) = lookup("BRIEF_THRESHOLD_TOKENS") {
+        if let Some(val) = lookup("OGT_THRESHOLD_TOKENS") {
             match val.parse::<usize>() {
                 Ok(n) => cfg.threshold_tokens = n,
                 Err(_) => {
                     let _ = writeln!(
                         warn,
-                        "brief: BRIEF_THRESHOLD_TOKENS={val:?} is not a valid number; \
+                        "ogt: OGT_THRESHOLD_TOKENS={val:?} is not a valid number; \
                          using default ({DEFAULT_THRESHOLD_TOKENS})"
                     );
                 }
             }
         }
 
-        // `BRIEF` is the short bypass alias for `BRIEF_ENABLED`: applied
+        // `OGT` is the short bypass alias for `OGT_ENABLED`: applied
         // first so the explicit long form below wins when both are set.
-        // An unknown env var is inert on a machine without brief
-        // installed, so a script carrying `BRIEF=0` still works
+        // An unknown env var is inert on a machine without ogt
+        // installed, so a script carrying `OGT=0` still works
         // everywhere a flag form would not.
-        if let Some(val) = lookup("BRIEF") {
+        if let Some(val) = lookup("OGT") {
             match val.as_str() {
                 "0" | "false" => cfg.enabled = false,
                 "1" | "true" => cfg.enabled = true,
                 _ => {
                     let _ = writeln!(
                         warn,
-                        "brief: BRIEF={val:?} is not \
+                        "ogt: OGT={val:?} is not \
                          '0'/'false'/'1'/'true'; using default (enabled)"
                     );
                 }
             }
         }
 
-        if let Some(val) = lookup("BRIEF_ENABLED") {
+        if let Some(val) = lookup("OGT_ENABLED") {
             match val.as_str() {
                 "0" | "false" => cfg.enabled = false,
                 "1" | "true" => cfg.enabled = true,
                 _ => {
                     let _ = writeln!(
                         warn,
-                        "brief: BRIEF_ENABLED={val:?} is not \
+                        "ogt: OGT_ENABLED={val:?} is not \
                          '0'/'false'/'1'/'true'; using default (enabled)"
                     );
                 }
@@ -148,8 +148,7 @@ mod tests {
     #[test]
     fn from_env_valid_threshold_override_applies() {
         let mut warn = Vec::new();
-        let cfg =
-            FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF_THRESHOLD_TOKENS", "42")]));
+        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("OGT_THRESHOLD_TOKENS", "42")]));
         assert_eq!(cfg.threshold_tokens, 42);
         assert!(warn.is_empty());
     }
@@ -159,52 +158,48 @@ mod tests {
         let mut warn = Vec::new();
         let cfg = FoldConfig::from_env_with(
             &mut warn,
-            env_map(&[("BRIEF_THRESHOLD_TOKENS", "not-a-number")]),
+            env_map(&[("OGT_THRESHOLD_TOKENS", "not-a-number")]),
         );
         assert_eq!(
             cfg.threshold_tokens, DEFAULT_THRESHOLD_TOKENS,
             "a bad env var must never break the command; it falls back"
         );
         let warning = String::from_utf8(warn).unwrap();
-        assert!(warning.contains("BRIEF_THRESHOLD_TOKENS"));
+        assert!(warning.contains("OGT_THRESHOLD_TOKENS"));
         assert!(warning.contains("not-a-number"));
     }
 
     #[test]
     fn from_env_enabled_false_disables() {
         let mut warn = Vec::new();
-        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF_ENABLED", "false")]));
+        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("OGT_ENABLED", "false")]));
         assert!(!cfg.enabled);
         assert!(warn.is_empty());
     }
 
     #[test]
-    fn from_env_brief_zero_disables() {
+    fn from_env_ogt_zero_disables() {
         let mut warn = Vec::new();
-        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("BRIEF", "0")]));
+        let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[("OGT", "0")]));
         assert!(!cfg.enabled);
         assert!(warn.is_empty());
     }
 
     #[test]
-    fn from_env_brief_enabled_wins_over_brief_when_they_disagree() {
+    fn from_env_ogt_enabled_wins_over_ogt_when_they_disagree() {
         let mut warn = Vec::new();
-        let cfg = FoldConfig::from_env_with(
-            &mut warn,
-            env_map(&[("BRIEF", "0"), ("BRIEF_ENABLED", "1")]),
-        );
-        assert!(cfg.enabled, "BRIEF_ENABLED must win over the BRIEF alias");
+        let cfg =
+            FoldConfig::from_env_with(&mut warn, env_map(&[("OGT", "0"), ("OGT_ENABLED", "1")]));
+        assert!(cfg.enabled, "OGT_ENABLED must win over the OGT alias");
 
         let mut warn = Vec::new();
-        let cfg = FoldConfig::from_env_with(
-            &mut warn,
-            env_map(&[("BRIEF", "1"), ("BRIEF_ENABLED", "0")]),
-        );
-        assert!(!cfg.enabled, "BRIEF_ENABLED must win over the BRIEF alias");
+        let cfg =
+            FoldConfig::from_env_with(&mut warn, env_map(&[("OGT", "1"), ("OGT_ENABLED", "0")]));
+        assert!(!cfg.enabled, "OGT_ENABLED must win over the OGT alias");
     }
 
     #[test]
-    fn from_env_neither_brief_var_set_leaves_folding_on() {
+    fn from_env_neither_ogt_var_set_leaves_folding_on() {
         let mut warn = Vec::new();
         let cfg = FoldConfig::from_env_with(&mut warn, env_map(&[]));
         assert!(cfg.enabled);

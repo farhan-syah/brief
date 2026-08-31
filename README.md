@@ -1,32 +1,32 @@
 <div align="center">
 
-# brief
+# ogt
 
 <h3>Large command output stays out of agent context while complete output remains recoverable.</h3>
 
-<p><strong>brief</strong> wraps noisy shell commands for developers, scripts, coding agents, and any repository.</p>
+<p><strong>ogt</strong> wraps noisy shell commands for developers, scripts, coding agents, and any repository.</p>
 
-<p><a href="#what-is-brief">What is brief?</a> · <a href="#install">Install</a> · <a href="#quickstart">Quickstart</a> · <a href="#harnesses">Harnesses</a> · <a href="#measurement">Measurement</a> · <a href="#limits">Limits</a></p>
+<p><a href="#what-is-ogt">What is ogt?</a> · <a href="#install">Install</a> · <a href="#quickstart">Quickstart</a> · <a href="#harnesses">Harnesses</a> · <a href="#measurement">Measurement</a> · <a href="#limits">Limits</a></p>
 
-<p><a href="https://github.com/farhan-syah/brief/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/github/license/farhan-syah/brief"></a></p>
+<p><a href="https://github.com/farhan-syah/ogt/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/github/license/farhan-syah/ogt"></a></p>
 
 </div>
 
-## What is brief?
+## What is ogt?
 
-brief is a size gate for command output.
+ogt is a size gate for command output.
 
 Large grep, git, cargo, file-listing, and diff output can fill agent context. Users often need only a compact result and a recovery path.
 
-Use brief directly with `brief <program> [args...]`.
+Use ogt directly with `ogt <program> [args...]`.
 
 | Target programs                                               |
 | ------------------------------------------------------------- |
 | `grep`, `cat`, `find`, `rg`, `cargo`, `git`, `ls`, and `diff` |
 
-Other commands pass through unchanged. The names `report`, `hook`, and `init` are reserved by brief. Run a literal program with one of those names by path, such as `brief ./init`.
+Other commands pass through unchanged. The names `report`, `hook`, and `init` are reserved by ogt. Run a literal program with one of those names by path, such as `ogt ./init`.
 
-brief is not a command-specific output rewriter or a replacement for the wrapped tools.
+ogt is not a command-specific output rewriter or a replacement for the wrapped tools.
 
 ## Why use it?
 
@@ -38,18 +38,18 @@ brief is not a command-specific output rewriter or a replacement for the wrapped
 ## Install
 
 ```sh
-cargo install brief
-brief --version
-brief --help
+cargo install ogt
+ogt --version
+ogt --help
 ```
 
-`cargo install brief` is the source-install fallback.
+`cargo install ogt` is the source-install fallback.
 
 ### Prebuilt binaries
 
 GitHub releases provide archives for `linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, and `windows-x64`.
 
-Each Unix archive contains `brief`, `LICENSE`, and `NOTICE`. The Windows archive contains `brief.exe`, `LICENSE`, and `NOTICE`.
+Each Unix archive contains `ogt`, `LICENSE`, and `NOTICE`. The Windows archive contains `ogt.exe`, `LICENSE`, and `NOTICE`.
 
 `SHA256SUMS` detects transfer corruption but is not a signed build attestation. Prereleases are marked and are not the latest release.
 
@@ -58,15 +58,15 @@ Download and install the Linux x64 archive into a user-writable directory:
 ```sh
 version=0.1.0
 label=linux-x64
-archive=brief-${version}-${label}.tar.gz
-base_url="https://github.com/farhan-syah/brief/releases/download/v${version}"
+archive=ogt-${version}-${label}.tar.gz
+base_url="https://github.com/farhan-syah/ogt/releases/download/v${version}"
 curl -fsSLO "$base_url/$archive"
 curl -fsSLO "$base_url/SHA256SUMS"
 grep -F "  $archive" SHA256SUMS | sha256sum -c -
 tmp=$(mktemp -d)
 tar -xzf "$archive" -C "$tmp"
 mkdir -p "$HOME/.local/bin"
-install -m 0755 "$tmp/brief" "$HOME/.local/bin/brief"
+install -m 0755 "$tmp/ogt" "$HOME/.local/bin/ogt"
 rm -rf "$tmp"
 ```
 
@@ -75,8 +75,8 @@ On Windows, use PowerShell and add `$HOME\bin` to your user `PATH`:
 ```powershell
 $version = "0.1.0"
 $label = "windows-x64"
-$archive = "brief-$version-$label.zip"
-$baseUrl = "https://github.com/farhan-syah/brief/releases/download/v$version"
+$archive = "ogt-$version-$label.zip"
+$baseUrl = "https://github.com/farhan-syah/ogt/releases/download/v$version"
 Invoke-WebRequest "$baseUrl/$archive" -OutFile $archive
 Invoke-WebRequest "$baseUrl/SHA256SUMS" -OutFile SHA256SUMS
 $line = Get-Content SHA256SUMS | Where-Object { $_ -like "*  $archive" }
@@ -90,19 +90,19 @@ Expand-Archive $archive -DestinationPath $destination -Force
 
 ## Quickstart
 
-Run brief inside any repository.
+Run ogt inside any repository.
 
 ```sh
 cd /path/to/your/repository
-brief rg "TODO" .
-brief cargo test
+ogt rg "TODO" .
+ogt cargo test
 ```
 
 Output below the estimated 25,000-token threshold passes byte-for-byte unchanged.
 
-At or above the threshold, brief saves full output and returns a compact head/tail summary with an exact recovery command.
+At or above the threshold, ogt saves full output and returns a compact head/tail summary with an exact recovery command.
 
-brief waits until the child exits before returning output.
+ogt waits until the child exits before returning output.
 
 ## Harnesses
 
@@ -110,24 +110,24 @@ The core wrapper is harness-agnostic.
 
 Claude Code has the built-in adapter because it exposes a PreToolUse hook format.
 
-Run `brief init --yes` to install that Claude Code hook. Claude Code then invokes `brief hook` for matching Bash calls.
+Run `ogt init --yes` to install that Claude Code hook. Claude Code then invokes `ogt hook` for matching Bash calls.
 
 A different harness can prefix supported commands in its command string.
 
 ```sh
-brief rg "TODO" .
-brief cargo test
+ogt rg "TODO" .
+ogt cargo test
 ```
 
 Automatic hook rewriting for another harness requires that harness to provide its own adapter or command-prefix support. Unix PATH shims avoid that requirement on supported Unix systems.
 
 ### Unix PATH shims
 
-Use `brief init --shims <dir>` when a harness starts programs by name instead of providing a command string.
+Use `ogt init --shims <dir>` when a harness starts programs by name instead of providing a command string.
 
 ```sh
-brief init --shims "$HOME/.local/bin/brief-shims"
-export PATH="$HOME/.local/bin/brief-shims:$PATH"
+ogt init --shims "$HOME/.local/bin/ogt-shims"
+export PATH="$HOME/.local/bin/ogt-shims:$PATH"
 rg "TODO" .
 cargo test
 ```
@@ -138,17 +138,17 @@ The shims work with Unix shells and the target programs listed above.
 
 ## Repository scope
 
-brief works in any repository and folds output everywhere by default.
+ogt works in any repository and folds output everywhere by default.
 
-Limit folding to absolute roots with `BRIEF_ROOTS`.
+Limit folding to absolute roots with `OGT_ROOTS`.
 
 Use the platform path-list separator: `:` on Unix and `;` on Windows.
 
 ```sh
-BRIEF_ROOTS="/work/app:/work/lib" brief rg "TODO" .
+OGT_ROOTS="/work/app:/work/lib" ogt rg "TODO" .
 ```
 
-Without `BRIEF_ROOTS`, brief reads `<config-dir>/brief/roots` when that file exists.
+Without `OGT_ROOTS`, ogt reads `<config-dir>/ogt/roots` when that file exists.
 
 List one absolute repository root per line.
 
@@ -161,32 +161,32 @@ A token is an estimated text unit used by a language model.
 | Term         | Meaning                                                     |
 | ------------ | ----------------------------------------------------------- |
 | Raw tokens   | Estimated tokens in the complete command output.            |
-| Shown tokens | Estimated tokens in the output brief returns to the caller. |
+| Shown tokens | Estimated tokens in the output ogt returns to the caller. |
 | Saved tokens | Raw tokens minus shown tokens.                              |
 
-When brief folds output, it saves the complete output to disk instead of returning it all.
+When ogt folds output, it saves the complete output to disk instead of returning it all.
 
 Run the report with its default window or inspect all retained tracking rows.
 
 ```sh
-brief report --since all
-brief report --since all --format json
+ogt report --since all
+ogt report --since all --format json
 ```
 
-The report covers only commands brief handled, not all terminal output, model usage, or billing.
+The report covers only commands ogt handled, not all terminal output, model usage, or billing.
 
-Re-read counts only include reads that also go through brief, so they are a lower bound.
+Re-read counts only include reads that also go through ogt, so they are a lower bound.
 
 ### One-PC snapshot
 
-This snapshot uses all retained rows from `brief report --since all` on one PC, captured on 2026-08-31.
+This snapshot uses all retained rows from `ogt report --since all` on one PC, captured on 2026-08-31.
 
 | Tool  |             Tracked work |  Raw tokens | Shown tokens | Saved tokens |  Rate |
 | ----- | -----------------------: | ----------: | -----------: | -----------: | ----: |
-| brief |      4,756 handled calls | 105,198,542 |    3,816,975 |  101,381,567 | 96.4% |
+| ogt   |      4,756 handled calls | 105,198,542 |    3,816,975 |  101,381,567 | 96.4% |
 | RTK   | 234,623 tracked commands | 838,589,245 |  144,425,960 |  704,537,499 | 84.0% |
 
-The brief values come from its global report.
+The ogt values come from its global report.
 
 The RTK values are RTK estimates from its global savings report.
 
@@ -200,11 +200,11 @@ They are not an apples-to-apples benchmark, and neither proves billing savings.
 
 | Variable                 | Effect                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------ |
-| `BRIEF_THRESHOLD_TOKENS` | Set the estimated token threshold. Default: `25000`.                           |
-| `BRIEF_ENABLED`          | Set `0` or `false` to disable folding.                                         |
-| `BRIEF`                  | Short enable or disable alias. `BRIEF_ENABLED` wins when both exist.           |
-| `BRIEF_FOLD_DIR`         | Set the directory for complete folded output.                                  |
-| `BRIEF_ROOTS`            | Set platform-separated absolute roots for folding. This overrides the roots file. |
+| `OGT_THRESHOLD_TOKENS`   | Set the estimated token threshold. Default: `25000`.                           |
+| `OGT_ENABLED`            | Set `0` or `false` to disable folding.                                         |
+| `OGT`                    | Short enable or disable alias. `OGT_ENABLED` wins when both exist.              |
+| `OGT_FOLD_DIR`           | Set the directory for complete folded output.                                  |
+| `OGT_ROOTS`              | Set platform-separated absolute roots for folding. This overrides the roots file. |
 
 ## Report flags
 
@@ -217,27 +217,27 @@ They are not an apples-to-apples benchmark, and neither proves billing savings.
 
 ## Limits
 
-- brief buffers selected output until the child exits.
+- ogt buffers selected output until the child exits.
 - The threshold is an estimate, not an exact token count.
-- brief stores complete folded output on disk.
+- ogt stores complete folded output on disk.
 - Rotation removes older recovery files after 20 logs per directory by default.
-- Pipes can change terminal detection because brief wraps child streams.
+- Pipes can change terminal detection because ogt wraps child streams.
 - Commands outside the target list or configured roots pass through without folding.
 - Reports do not represent total terminal output, model usage, or billing.
-- Re-read counts only include reads that go through brief, so they are a lower bound.
+- Re-read counts only include reads that go through ogt, so they are a lower bound.
 
 ## Uninstall
 
 Remove the Claude Code hook.
 
 ```sh
-brief init --uninstall
+ogt init --uninstall
 ```
 
-Remove only brief-owned Unix PATH shims.
+Remove only ogt-owned Unix PATH shims.
 
 ```sh
-brief init --shims "$HOME/.local/bin/brief-shims" --uninstall
+ogt init --shims "$HOME/.local/bin/ogt-shims" --uninstall
 ```
 
 ## Contributing

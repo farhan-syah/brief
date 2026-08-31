@@ -111,8 +111,8 @@ next_section = re.search(rb"(?m)^\[[^\r\n]+\]\r?$", manifest[package_start:])
 package_end = package_start + next_section.start() if next_section else len(manifest)
 package_section = manifest[package_start:package_end]
 manifest_names = list(re.finditer(rb'(?m)^name = "([^"\r\n]*)"\r?$', package_section))
-if len(manifest_names) != 1 or manifest_names[0].group(1) != b"brief":
-    fail('Cargo.toml [package] must name exactly one package: brief')
+if len(manifest_names) != 1 or manifest_names[0].group(1) != b"ogt":
+    fail('Cargo.toml [package] must name exactly one package: ogt')
 manifest_versions = list(re.finditer(rb'(?m)^version = "([^"\r\n]*)"\r?$', package_section))
 if len(manifest_versions) != 1:
     fail("Cargo.toml [package] must contain exactly one version")
@@ -120,17 +120,17 @@ manifest_match = manifest_versions[0]
 manifest_version = manifest_match.group(1).decode("utf-8")
 
 package_blocks = list(re.finditer(rb"(?ms)^\[\[package\]\]\r?\n.*?(?=^\[\[package\]\]\r?\n|\Z)", lockfile))
-brief_blocks = [block for block in package_blocks if re.search(rb'(?m)^name = "brief"\r?$', block.group(0))]
-root_brief_blocks = [
-    block for block in brief_blocks if not re.search(rb"(?m)^source = ", block.group(0))
+ogt_blocks = [block for block in package_blocks if re.search(rb'(?m)^name = "ogt"\r?$', block.group(0))]
+root_ogt_blocks = [
+    block for block in ogt_blocks if not re.search(rb"(?m)^source = ", block.group(0))
 ]
-if len(root_brief_blocks) != 1:
-    fail('Cargo.lock must contain exactly one root [[package]] block named brief')
+if len(root_ogt_blocks) != 1:
+    fail('Cargo.lock must contain exactly one root [[package]] block named ogt')
 
-brief_block = root_brief_blocks[0]
-lock_versions = list(re.finditer(rb'(?m)^version = "([^"\r\n]*)"\r?$', brief_block.group(0)))
+ogt_block = root_ogt_blocks[0]
+lock_versions = list(re.finditer(rb'(?m)^version = "([^"\r\n]*)"\r?$', ogt_block.group(0)))
 if len(lock_versions) != 1:
-    fail('Cargo.lock brief block must contain exactly one version')
+    fail('Cargo.lock ogt block must contain exactly one version')
 lock_match = lock_versions[0]
 lock_version = lock_match.group(1).decode("utf-8")
 
@@ -147,8 +147,8 @@ if manifest_version == version:
 
 manifest_offset = package_start + manifest_match.start(1)
 manifest_end = package_start + manifest_match.end(1)
-lock_offset = brief_block.start() + lock_match.start(1)
-lock_end = brief_block.start() + lock_match.end(1)
+lock_offset = ogt_block.start() + lock_match.start(1)
+lock_end = ogt_block.start() + lock_match.end(1)
 
 stamped_manifest = manifest[:manifest_offset] + version.encode() + manifest[manifest_end:]
 stamped_lockfile = lockfile[:lock_offset] + version.encode() + lockfile[lock_end:]

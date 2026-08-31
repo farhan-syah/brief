@@ -12,7 +12,7 @@ stamp="$root/scripts/ci/stamp_version.sh"
 changelog="$root/scripts/ci/changelog_section.sh"
 prepare="$root/scripts/ci/verify_prepare_run.sh"
 artifacts="$root/scripts/ci/verify_release_artifacts.sh"
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/brief-release-verifiers.XXXXXX")
+tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ogt-release-verifiers.XXXXXX")
 trap 'rm -rf "$tmp_dir"' EXIT
 
 failures=0
@@ -51,7 +51,7 @@ make_cargo_fixture() {
   mkdir -p "$dir"
   cat >"$dir/Cargo.toml" <<'EOF'
 [package]
-name = "brief"
+name = "ogt"
 version = "0.1.0"
 edition = "2021"
 
@@ -62,7 +62,7 @@ EOF
 version = 3
 
 [[package]]
-name = "brief"
+name = "ogt"
 version = "0.1.0"
 dependencies = [
  "dep",
@@ -112,7 +112,7 @@ from pathlib import Path
 import sys
 
 path = Path(sys.argv[1])
-path.write_text(path.read_text(encoding="utf-8").replace('name = "brief"', 'name = "other"', 1), encoding="utf-8")
+path.write_text(path.read_text(encoding="utf-8").replace('name = "ogt"', 'name = "other"', 1), encoding="utf-8")
 PY
 expect_failure 'stamp rejects renamed manifest' run_stamp "$renamed" 0.1.0-beta.1
 
@@ -124,10 +124,10 @@ import sys
 
 path = Path(sys.argv[1])
 text = path.read_text(encoding="utf-8")
-text = text.replace('name = "brief"\nversion = "0.1.0"', 'name = "brief"\nversion = "0.1.0"\nsource = "registry+https://example.invalid"', 1)
+text = text.replace('name = "ogt"\nversion = "0.1.0"', 'name = "ogt"\nversion = "0.1.0"\nsource = "registry+https://example.invalid"', 1)
 path.write_text(text, encoding="utf-8")
 PY
-expect_failure 'stamp rejects source-bearing brief lock block' run_stamp "$source_bearing" 0.1.0-beta.1
+expect_failure 'stamp rejects source-bearing ogt lock block' run_stamp "$source_bearing" 0.1.0-beta.1
 
 make_changelog_fixture() {
   local dir=$1
@@ -206,11 +206,11 @@ printf '[]\n' >"$non_object"
 expect_failure 'prepare run rejects non-object JSON' run_prepare "$non_object" "$commit"
 
 artifact_names=(
-  brief-0.1.0-beta.1-linux-x64.tar.gz
-  brief-0.1.0-beta.1-linux-arm64.tar.gz
-  brief-0.1.0-beta.1-macos-arm64.tar.gz
-  brief-0.1.0-beta.1-macos-x64.tar.gz
-  brief-0.1.0-beta.1-windows-x64.zip
+  ogt-0.1.0-beta.1-linux-x64.tar.gz
+  ogt-0.1.0-beta.1-linux-arm64.tar.gz
+  ogt-0.1.0-beta.1-macos-arm64.tar.gz
+  ogt-0.1.0-beta.1-macos-x64.tar.gz
+  ogt-0.1.0-beta.1-windows-x64.zip
 )
 make_artifacts() {
   local dir=$1

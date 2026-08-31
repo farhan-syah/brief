@@ -47,7 +47,7 @@ pub(crate) fn append(record: &InvocationRecord, cfg: &TrackConfig) -> io::Result
     let mut file = open_private(fs::OpenOptions::new().create(true).append(true), &path)?;
     // A single write_all of one complete, newline-terminated buffer — never
     // two writes — is what keeps this append atomic under POSIX's
-    // O_APPEND/PIPE_BUF guarantee against a concurrent brief invocation.
+    // O_APPEND/PIPE_BUF guarantee against a concurrent ogt invocation.
     file.write_all(line.as_bytes())?;
     Ok(())
 }

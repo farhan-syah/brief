@@ -138,8 +138,8 @@ jobs:
           package_section = manifest[package_start:package_end]
 
           names = re.findall(r'(?m)^name = "([^"\r\n]*)"\r?$', package_section)
-          if names != ["brief"]:
-              fail('Cargo.toml [package] must name exactly one package: brief')
+          if names != ["ogt"]:
+              fail('Cargo.toml [package] must name exactly one package: ogt')
           manifest_versions = re.findall(r'(?m)^version = "([^"\r\n]*)"\r?$', package_section)
           if len(manifest_versions) != 1:
               fail("Cargo.toml [package] must contain exactly one version")
@@ -149,23 +149,23 @@ jobs:
               r"(?ms)^\[\[package\]\]\r?\n.*?(?=^\[\[package\]\]\r?\n|\Z)",
               lockfile,
           )
-          brief_blocks = [
+          ogt_blocks = [
               block
               for block in package_blocks
-              if re.search(r'(?m)^name = "brief"\r?$', block)
+              if re.search(r'(?m)^name = "ogt"\r?$', block)
           ]
-          root_brief_blocks = [
+          root_ogt_blocks = [
               block
-              for block in brief_blocks
+              for block in ogt_blocks
               if not re.search(r"(?m)^source = ", block)
           ]
-          if len(root_brief_blocks) != 1:
-              fail('Cargo.lock must contain exactly one root [[package]] block named brief')
+          if len(root_ogt_blocks) != 1:
+              fail('Cargo.lock must contain exactly one root [[package]] block named ogt')
           lock_versions = re.findall(
-              r'(?m)^version = "([^"\r\n]*)"\r?$', root_brief_blocks[0]
+              r'(?m)^version = "([^"\r\n]*)"\r?$', root_ogt_blocks[0]
           )
           if len(lock_versions) != 1:
-              fail('Cargo.lock brief block must contain exactly one version')
+              fail('Cargo.lock ogt block must contain exactly one version')
           lock_version = lock_versions[0]
 
           if manifest_version != lock_version:

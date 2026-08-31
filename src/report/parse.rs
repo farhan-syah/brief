@@ -251,7 +251,7 @@ mod tests {
             stdout_raw_bytes: Some(1000),
             stdout_kept_bytes: Some(200),
             stdout_folded: true,
-            stdout_path: Some("/tmp/brief/folds/1_grep.log".to_string()),
+            stdout_path: Some("/tmp/ogt/folds/1_grep.log".to_string()),
             stderr_raw_bytes: Some(5),
             stderr_kept_bytes: Some(5),
             stderr_folded: false,

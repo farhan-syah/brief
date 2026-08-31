@@ -66,7 +66,7 @@ pub(crate) fn run_with(
     let dir = resolve_fold_dir(cfg);
 
     // stdin is inherited: a command reading a pipe or a terminal must see it
-    // exactly as it would without brief. Output is piped because the gate
+    // exactly as it would without ogt. Output is piped because the gate
     // cannot decide before it has seen the bytes.
     cmd.stdin(Stdio::inherit());
     cmd.stdout(Stdio::piped());
@@ -276,7 +276,7 @@ fn program_slug(cmd: &Command) -> String {
 }
 
 /// Basename of a program path or name. `crate::cli` reuses this to decide
-/// whether `argv[1]` names one of brief's fold targets, matching exactly
+/// whether `argv[1]` names one of ogt's fold targets, matching exactly
 /// the slug logic the fold-file writer already uses — one basename rule,
 /// not two that could disagree.
 pub(crate) fn basename(program: &OsStr) -> String {
@@ -640,7 +640,7 @@ mod tests {
 
     /// Passthrough rows are mandatory and carry the real byte count, never
     /// a zero placeholder — that zeroed denominator is exactly what made
-    /// the tool brief replaces produce a misleading savings figure.
+    /// the tool ogt replaces produce a misleading savings figure.
     #[test]
     #[cfg(unix)]
     fn tracking_row_for_passthrough_carries_real_nonzero_bytes() {

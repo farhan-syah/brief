@@ -5,7 +5,7 @@
 //!
 //! # Line atomicity
 //!
-//! Concurrent `brief` invocations append to the same file, and POSIX only
+//! Concurrent `ogt` invocations append to the same file, and POSIX only
 //! guarantees an `O_APPEND` write is atomic up to `PIPE_BUF` (4096 bytes).
 //! `to_line` enforces a smaller, safer cap: the serialized line, including
 //! its trailing newline, never exceeds `MAX_LINE_BYTES`. `args` is the only
@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Hard cap on one serialized line (including its trailing `\n`), kept
 /// safely under POSIX's `PIPE_BUF` (4096 bytes) so a concurrent append from
-/// another `brief` invocation can never interleave with this one.
+/// another `ogt` invocation can never interleave with this one.
 const MAX_LINE_BYTES: usize = 4000;
 
 /// Appended to a shrunk `args` field so the truncation is visible rather
@@ -185,7 +185,7 @@ mod tests {
             stdout_raw_bytes: Some(1000),
             stdout_kept_bytes: Some(200),
             stdout_folded: true,
-            stdout_path: Some("/tmp/brief/folds/1_grep.log".to_string()),
+            stdout_path: Some("/tmp/ogt/folds/1_grep.log".to_string()),
             stderr_raw_bytes: Some(0),
             stderr_kept_bytes: Some(0),
             stderr_folded: false,

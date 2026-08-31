@@ -1,4 +1,4 @@
-//! Machine-readable `brief report` output (`--format json`). Hand-rolled,
+//! Machine-readable `ogt report` output (`--format json`). Hand-rolled,
 //! flat-ish JSON — no `serde` — reusing `track::json_string` for escaping
 //! rather than writing a second escaper that could drift from `parse.rs`'s
 //! unescaper.

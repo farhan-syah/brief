@@ -1,4 +1,4 @@
-//! `brief report`'s own argv parsing and top-level flow: resolve the
+//! `ogt report`'s own argv parsing and top-level flow: resolve the
 //! tracking file, load and filter rows, classify the outcome, and render.
 
 use std::io::{self, Write};
@@ -10,20 +10,20 @@ use super::load::{LoadResult, load_rows};
 use super::{render_json, render_text};
 
 const USAGE: &str =
-    "usage: brief report [--since <Nd|Nh|all|epoch_ms>] [--project] [--format text|json]\n";
+    "usage: ogt report [--since <Nd|Nh|all|epoch_ms>] [--project] [--format text|json]\n";
 
-/// Text for `brief report --help`. A function, not a `const`, because the
+/// Text for `ogt report --help`. A function, not a `const`, because the
 /// scope line names every program in `crate::targets::TARGETS`.
 fn help_text() -> String {
     format!(
         "\
-brief report — summarize the tracking JSONL brief has recorded.
+ogt report — summarize the tracking JSONL ogt has recorded.
 
 Scope: only {} calls are tracked, so every number is
-\"output brief handled,\" never total output or your token usage.
+\"output ogt handled,\" never total output or your token usage.
 
 Lower bound: the re-read count only catches re-reads that go back through
-brief's own argv. A plain shell cat of a fold file is invisible to it.
+ogt's own argv. A plain shell cat of a fold file is invisible to it.
 
 Flags:
   --since <Nd|Nh|all|epoch_ms>   window to report over (default: 30d)
@@ -31,10 +31,10 @@ Flags:
   --format text|json             output format (default: text)
   --help, -h                     this text
 
-Usage: brief report [--since <spec>] [--project] [--format text|json]
+Usage: ogt report [--since <spec>] [--project] [--format text|json]
 
 To run a program literally named \"report\", invoke it by path:
-brief ./report
+ogt ./report
 ",
         crate::targets::oxford_list()
     )
@@ -46,7 +46,7 @@ enum Format {
     Json,
 }
 
-/// Entry point wired from `cli::dispatch` for `brief report [...]`.
+/// Entry point wired from `cli::dispatch` for `ogt report [...]`.
 /// `args` is the argv following the literal `report` token.
 pub(crate) fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let track_cfg = TrackConfig::from_env();
@@ -124,7 +124,7 @@ pub(crate) fn run_with(
         Ok(l) => l,
         Err(e) if e.kind() == io::ErrorKind::NotFound => empty_load(),
         Err(e) => {
-            let _ = writeln!(err, "brief report: could not read tracking file: {e}");
+            let _ = writeln!(err, "ogt report: could not read tracking file: {e}");
             return 1;
         }
     };
@@ -219,7 +219,7 @@ mod tests {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!(
-            "brief-report-test-missing-{}-{n}.jsonl",
+            "ogt-report-test-missing-{}-{n}.jsonl",
             std::process::id()
         ))
     }

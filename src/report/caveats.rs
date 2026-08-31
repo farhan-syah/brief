@@ -27,7 +27,7 @@ pub(crate) fn scope_short() -> String {
 /// the single shared `crate::targets::TARGETS` list.
 pub(crate) fn scope_full() -> String {
     format!(
-        "Scope: only {} calls are tracked, so every number is output brief \
+        "Scope: only {} calls are tracked, so every number is output ogt \
          handled, never total output or your token usage.",
         crate::targets::oxford_list()
     )
@@ -35,12 +35,12 @@ pub(crate) fn scope_full() -> String {
 
 /// Inline form: why the re-read count is a floor, not a measurement.
 pub(crate) const LOWER_BOUND_SHORT: &str =
-    "lower bound: only catches a re-read that goes back through brief's own argv";
+    "lower bound: only catches a re-read that goes back through ogt's own argv";
 
 /// Standalone form of the same fact.
 pub(crate) const LOWER_BOUND_FULL: &str = "Lower bound: the re-read count only catches a re-read that \
-     goes back through brief's own argv — including the `brief tail ...` the fold hint prescribes. \
-     A re-read that bypasses brief entirely (a plain shell tail, an editor, a pager) is invisible to it.";
+     goes back through ogt's own argv — including the `ogt tail ...` the fold hint prescribes. \
+     A re-read that bypasses ogt entirely (a plain shell tail, an editor, a pager) is invisible to it.";
 
 #[cfg(test)]
 mod tests {

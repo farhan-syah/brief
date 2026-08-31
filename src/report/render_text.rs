@@ -1,4 +1,4 @@
-//! Human-readable `brief report` output (`--format text`, the default).
+//! Human-readable `ogt report` output (`--format text`, the default).
 
 use std::fmt::Write as _;
 
@@ -36,7 +36,7 @@ pub(crate) fn render(
         ReportBody::NoData => {
             let _ = writeln!(
                 s,
-                "No tracking data yet — brief has not recorded any {} calls.",
+                "No tracking data yet — ogt has not recorded any {} calls.",
                 slash_list()
             );
         }
@@ -56,7 +56,7 @@ pub(crate) fn render(
             let project_note = if project { ", in this directory" } else { "" };
             let _ = writeln!(
                 s,
-                "No rows in {window_label}{project_note} — brief has recorded data, \
+                "No rows in {window_label}{project_note} — ogt has recorded data, \
                  just none in this window."
             );
         }
@@ -99,7 +99,7 @@ fn render_header(s: &mut String, window_label: &str, project: bool, load: &LoadR
     };
     let _ = writeln!(
         s,
-        "brief report — {window_label}{project_note} · {counted}{recovery_note} · {} malformed",
+        "ogt report — {window_label}{project_note} · {counted}{recovery_note} · {} malformed",
         load.malformed
     );
 }
@@ -125,7 +125,7 @@ fn render_data(s: &mut String, summary: &ReportSummary) {
     );
     let _ = writeln!(
         s,
-        "  {:.1}% of output brief handled was set aside to disk.",
+        "  {:.1}% of output ogt handled was set aside to disk.",
         summary.set_aside_pct
     );
     let _ = writeln!(s);

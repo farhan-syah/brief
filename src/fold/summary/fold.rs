@@ -277,7 +277,7 @@ mod tests {
         assert!(rendered.contains("line 0"), "must show head");
         assert!(rendered.contains("line 499"), "must show tail");
         assert!(rendered.contains("500"), "must state total line count");
-        assert!(rendered.contains("[full output: brief tail -n +"));
+        assert!(rendered.contains("[full output: ogt tail -n +"));
         let displayed_path = display_shell_path(&fold.path);
         assert_eq!(
             rendered.matches(&displayed_path).count(),

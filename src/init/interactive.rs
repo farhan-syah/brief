@@ -1,4 +1,4 @@
-//! `brief init`'s interactive installer, reached only when stdin is a
+//! `ogt init`'s interactive installer, reached only when stdin is a
 //! terminal, no other flag was given, and `--yes` was not passed (see
 //! `cli::run_with`'s decision). Prompts on the injected `out`, reads lines
 //! from the injected `reader` — never the real stdin/stdout directly, so
@@ -46,11 +46,11 @@ pub(crate) fn run(
     home_dir: Option<&Path>,
     default_shims_dir: Option<PathBuf>,
     config_dir: Option<PathBuf>,
-    brief_exe: Option<&Path>,
+    ogt_exe: Option<&Path>,
 ) -> i32 {
     let _ = writeln!(
         out,
-        "brief folds large command output to disk once it crosses a token \
+        "ogt folds large command output to disk once it crosses a token \
          threshold, keeping a compact head/tail summary in view instead."
     );
     let _ = writeln!(out, "Nothing is written until you confirm at the end.\n");
@@ -59,10 +59,10 @@ pub(crate) fn run(
         return abort(out);
     };
 
-    if mechanism.wants_shims() && brief_exe.is_none() {
+    if mechanism.wants_shims() && ogt_exe.is_none() {
         let _ = writeln!(
             out,
-            "\nbrief init: could not determine brief's own executable path; \
+            "\nogt init: could not determine ogt's own executable path; \
              PATH shims cannot be installed. Nothing written."
         );
         return 1;
@@ -86,7 +86,7 @@ pub(crate) fn run(
     {
         let _ = writeln!(
             out,
-            "\nbrief init: could not determine a config directory to write \
+            "\nogt init: could not determine a config directory to write \
              the roots file to. Nothing written."
         );
         return 1;
@@ -95,7 +95,7 @@ pub(crate) fn run(
     if mechanism.wants_hook() && home_dir.is_none() {
         let _ = writeln!(
             out,
-            "\nbrief init: could not determine the home directory; the \
+            "\nogt init: could not determine the home directory; the \
              Claude Code hook cannot be installed. Nothing written."
         );
         return 1;
@@ -125,7 +125,7 @@ pub(crate) fn run(
         shims_dir.as_deref(),
         &scope,
         config_dir.as_deref(),
-        brief_exe,
+        ogt_exe,
     )
 }
 
@@ -150,7 +150,7 @@ fn read_line(reader: &mut dyn BufRead) -> Option<String> {
 
 fn prompt_mechanism(out: &mut dyn Write, reader: &mut dyn BufRead) -> Option<Mechanism> {
     loop {
-        let _ = writeln!(out, "How should brief be installed?");
+        let _ = writeln!(out, "How should ogt be installed?");
         let _ = writeln!(out, "  1) Claude Code hook");
         let _ = writeln!(out, "  2) PATH shims");
         let _ = writeln!(out, "  3) both");
@@ -291,7 +291,7 @@ fn print_preview(
         }
         Scope::Roots(roots) => {
             if let Some(cfg_dir) = config_dir {
-                let roots_path = cfg_dir.join("brief").join("roots");
+                let roots_path = cfg_dir.join("ogt").join("roots");
                 let _ = writeln!(out, "  {} with contents:", roots_path.display());
                 for root in roots {
                     let _ = writeln!(out, "    {}", root.display());
@@ -330,7 +330,7 @@ fn install(
     shims_dir: Option<&Path>,
     scope: &Scope,
     config_dir: Option<&Path>,
-    brief_exe: Option<&Path>,
+    ogt_exe: Option<&Path>,
 ) -> i32 {
     let mut code = 0;
 
@@ -341,22 +341,22 @@ fn install(
         if hook_code != 0 {
             code = hook_code;
         } else {
-            let _ = writeln!(out, "  undo: brief init --uninstall");
+            let _ = writeln!(out, "  undo: ogt init --uninstall");
         }
     }
 
     if let Some(dir) = shims_dir
-        && let Some(brief_exe) = brief_exe
+        && let Some(ogt_exe) = ogt_exe
     {
         let mut shims_err = Vec::new();
-        let shims_code = shim_fs::install_shims(dir, brief_exe, out, &mut shims_err);
+        let shims_code = shim_fs::install_shims(dir, ogt_exe, out, &mut shims_err);
         let _ = out.write_all(&shims_err);
         if shims_code != 0 {
             code = shims_code;
         } else {
             let _ = writeln!(
                 out,
-                "  undo: brief init --shims {} --uninstall",
+                "  undo: ogt init --shims {} --uninstall",
                 dir.display()
             );
         }
@@ -374,7 +374,7 @@ fn install(
                 );
             }
             Err(e) => {
-                let _ = writeln!(out, "brief init: could not write the roots file: {e}");
+                let _ = writeln!(out, "ogt init: could not write the roots file: {e}");
                 code = 1;
             }
         }
@@ -384,10 +384,10 @@ fn install(
 }
 
 /// Plain write, no backup: unlike settings.json this file has no prior
-/// content worth protecting — `brief init --roots` (if ever added) or a
+/// content worth protecting — `ogt init --roots` (if ever added) or a
 /// hand edit is how a user changes it later.
 fn write_roots_file(config_dir: &Path, roots: &[PathBuf]) -> std::io::Result<PathBuf> {
-    let dir = config_dir.join("brief");
+    let dir = config_dir.join("ogt");
     fs::create_dir_all(&dir)?;
     let path = dir.join("roots");
     let mut contents = String::new();
@@ -473,7 +473,7 @@ mod tests {
         assert_eq!(code, 0, "stdout: {}", String::from_utf8_lossy(&out));
         assert!(home.join(".claude").join("settings.json").exists());
         let printed = String::from_utf8(out).unwrap();
-        assert!(printed.contains("brief init --uninstall"));
+        assert!(printed.contains("ogt init --uninstall"));
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod tests {
             None,
         );
         assert_eq!(code, 0, "stdout: {}", String::from_utf8_lossy(&out));
-        let roots_file = config_dir.join("brief").join("roots");
+        let roots_file = config_dir.join("ogt").join("roots");
         assert!(roots_file.exists());
         let contents = fs::read_to_string(&roots_file).unwrap();
         assert!(contents.contains(&root.display().to_string()));
@@ -521,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn shims_without_a_brief_exe_refuses_before_writing_anything() {
+    fn shims_without_an_ogt_exe_refuses_before_writing_anything() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let mut out = Vec::new();

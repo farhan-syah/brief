@@ -1,10 +1,10 @@
-//! PATH-shim spawn resolution: when `BRIEF_SHIM_DIR` names a directory of
-//! brief's own wrapper scripts (`brief init --shims <dir>`), a plain
+//! PATH-shim spawn resolution: when `OGT_SHIM_DIR` names a directory of
+//! ogt's own wrapper scripts (`ogt init --shims <dir>`), a plain
 //! `Command::new(program)` would resolve `program` back through that same
-//! shim directory and loop forever — the shim invokes `brief <program>`,
-//! `brief` looks up `<program>` on `PATH`, finds the shim again, and hangs
-//! with zero output and no tracking row. The fix: before spawning, brief
-//! computes an effective `PATH` with every occurrence of `BRIEF_SHIM_DIR`
+//! shim directory and loop forever — the shim invokes `ogt <program>`,
+//! `ogt` looks up `<program>` on `PATH`, finds the shim again, and hangs
+//! with zero output and no tracking row. The fix: before spawning, ogt
+//! computes an effective `PATH` with every occurrence of `OGT_SHIM_DIR`
 //! removed, resolves `program` against that reduced `PATH`, and spawns the
 //! resolved absolute path — and passes the same reduced `PATH` to the
 //! child, so a wrapped `cargo` that itself spawns `git` gets the real
@@ -14,7 +14,7 @@
 //! never read from the environment — so tests never touch the real
 //! process environment, matching `fold::config` and `track::paths`.
 //! `cli::dispatch::main_with` is the one caller that reads the real
-//! `BRIEF_SHIM_DIR`/`PATH` env vars and feeds them in.
+//! `OGT_SHIM_DIR`/`PATH` env vars and feeds them in.
 
 use std::env;
 use std::ffi::{OsStr, OsString};
@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 /// a literal in both the shim script template (`init::shims::render_shim`)
 /// and here — so the two sides can never drift out of agreement, which
 /// would silently defeat the recursion guard this module exists for.
-pub(crate) const BRIEF_SHIM_DIR: &str = "BRIEF_SHIM_DIR";
+pub(crate) const OGT_SHIM_DIR: &str = "OGT_SHIM_DIR";
 
 /// Remove every occurrence of `shim_dir` from `path`, preserving order and
 /// every other entry untouched. A no-op — `path` returned unchanged — when
@@ -73,7 +73,7 @@ fn is_executable_file(path: &Path) -> bool {
 }
 
 /// Compute what to spawn and what `PATH` to give the child, given the raw
-/// `BRIEF_SHIM_DIR` and `PATH` values (or their absence). When
+/// `OGT_SHIM_DIR` and `PATH` values (or their absence). When
 /// `shim_dir`/`path` is `None` — no shims installed, or no `PATH` at all —
 /// returns `(program, None)` unchanged: the caller must then leave the
 /// child's environment untouched, exactly as before this feature existed.
@@ -142,7 +142,7 @@ mod tests {
         let reduced = reduce_path(path, Some(OsStr::new("/shim")));
         // Must not panic; the empty (cwd) entry and /usr/bin survive.
         let _ = resolve_program(
-            OsStr::new("brief-shim-test-definitely-not-a-real-binary-xyz"),
+            OsStr::new("ogt-shim-test-definitely-not-a-real-binary-xyz"),
             &reduced,
         );
     }
@@ -156,7 +156,7 @@ mod tests {
         bytes.extend_from_slice(b":/b");
         let path = OsStr::from_bytes(&bytes);
         let reduced = reduce_path(path, Some(OsStr::new("/shim")));
-        let _ = resolve_program(OsStr::new("brief-shim-test-also-not-real-xyz"), &reduced);
+        let _ = resolve_program(OsStr::new("ogt-shim-test-also-not-real-xyz"), &reduced);
     }
 
     #[test]
@@ -189,7 +189,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().as_os_str();
         assert_eq!(
-            resolve_program(OsStr::new("brief-shim-test-nope-xyz"), path),
+            resolve_program(OsStr::new("ogt-shim-test-nope-xyz"), path),
             None
         );
     }
@@ -240,11 +240,11 @@ mod tests {
         let path = shim_dir.as_os_str();
 
         let (program, reduced) = resolve_spawn(
-            OsStr::new("brief-shim-test-missing-xyz"),
+            OsStr::new("ogt-shim-test-missing-xyz"),
             Some(shim_dir.as_os_str()),
             Some(path),
         );
-        assert_eq!(program, OsString::from("brief-shim-test-missing-xyz"));
+        assert_eq!(program, OsString::from("ogt-shim-test-missing-xyz"));
         assert_eq!(reduced, Some(OsString::new()));
     }
 }

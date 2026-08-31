@@ -90,16 +90,16 @@ jobs:
           LABEL: ${{ matrix.label }}
         run: |
           set -euo pipefail
-          staging="$RUNNER_TEMP/brief-${VERSION}-${LABEL}"
-          archive="$RUNNER_TEMP/brief-${VERSION}-${LABEL}.tar.gz"
+          staging="$RUNNER_TEMP/ogt-${VERSION}-${LABEL}"
+          archive="$RUNNER_TEMP/ogt-${VERSION}-${LABEL}.tar.gz"
           rm -rf "$staging" "$archive"
           mkdir -p "$staging"
-          cp "target/${TARGET}/release/brief" "$staging/brief"
+          cp "target/${TARGET}/release/ogt" "$staging/ogt"
           cp LICENSE NOTICE "$staging/"
-          tar -C "$staging" -czf "$archive" brief LICENSE NOTICE
-          expected=$RUNNER_TEMP/brief-expected-members
-          actual=$RUNNER_TEMP/brief-actual-members
-          printf '%s\n' LICENSE NOTICE brief | LC_ALL=C sort >"$expected"
+          tar -C "$staging" -czf "$archive" ogt LICENSE NOTICE
+          expected=$RUNNER_TEMP/ogt-expected-members
+          actual=$RUNNER_TEMP/ogt-actual-members
+          printf '%s\n' LICENSE NOTICE ogt | LC_ALL=C sort >"$expected"
           tar -tzf "$archive" | LC_ALL=C sort >"$actual"
           diff -u "$expected" "$actual"
 
@@ -112,28 +112,28 @@ jobs:
           LABEL: ${{ matrix.label }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $staging = Join-Path $env:RUNNER_TEMP "brief-$env:VERSION-$env:LABEL"
-          $archive = Join-Path $env:RUNNER_TEMP "brief-$env:VERSION-$env:LABEL.zip"
-          $extract = Join-Path $env:RUNNER_TEMP "brief-$env:VERSION-$env:LABEL-extracted"
+          $staging = Join-Path $env:RUNNER_TEMP "ogt-$env:VERSION-$env:LABEL"
+          $archive = Join-Path $env:RUNNER_TEMP "ogt-$env:VERSION-$env:LABEL.zip"
+          $extract = Join-Path $env:RUNNER_TEMP "ogt-$env:VERSION-$env:LABEL-extracted"
           Remove-Item -LiteralPath $staging, $archive, $extract -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $staging | Out-Null
-          Copy-Item "target/$env:TARGET/release/brief.exe" (Join-Path $staging 'brief.exe')
+          Copy-Item "target/$env:TARGET/release/ogt.exe" (Join-Path $staging 'ogt.exe')
           Copy-Item LICENSE, NOTICE $staging
-          Compress-Archive -Path (Join-Path $staging 'brief.exe'), (Join-Path $staging 'LICENSE'), (Join-Path $staging 'NOTICE') -DestinationPath $archive
+          Compress-Archive -Path (Join-Path $staging 'ogt.exe'), (Join-Path $staging 'LICENSE'), (Join-Path $staging 'NOTICE') -DestinationPath $archive
           Expand-Archive -LiteralPath $archive -DestinationPath $extract
           $entries = @(Get-ChildItem -LiteralPath $extract -Recurse -Force | ForEach-Object {
             $_.FullName.Substring($extract.Length + 1).Replace('\', '/')
           } | Sort-Object)
-          $expected = @('LICENSE', 'NOTICE', 'brief.exe') | Sort-Object
+          $expected = @('LICENSE', 'NOTICE', 'ogt.exe') | Sort-Object
           if (Compare-Object $expected $entries) {
-            throw "Windows archive members are not exactly brief.exe, LICENSE, NOTICE"
+            throw "Windows archive members are not exactly ogt.exe, LICENSE, NOTICE"
           }
 
       - name: Upload release archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: brief-${{ matrix.label }}
-          path: ${{ runner.temp }}/brief-${{ needs.validate-version.outputs.version }}-${{ matrix.label }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+          name: ogt-${{ matrix.label }}
+          path: ${{ runner.temp }}/ogt-${{ needs.validate-version.outputs.version }}-${{ matrix.label }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
           if-no-files-found: error
           retention-days: 14
 
@@ -161,7 +161,7 @@ jobs:
           Dispatch the manual publication workflow:
 
           \`\`\`sh
-          gh workflow run release.yml -R farhan-syah/brief \\
+          gh workflow run release.yml -R farhan-syah/ogt \\
             -f tag=$RELEASE_TAG -f prepare_run_id=$PREPARE_RUN_ID
           \`\`\`
           EOF

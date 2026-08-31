@@ -107,7 +107,7 @@ pub(crate) fn aggregate(rows: &[ReportRow]) -> ReportSummary {
         // Re-read signal fires for every row that read a fold file back,
         // whether it was itself a captured fold-target invocation or an
         // uncaptured recovery read observed only through argv (see
-        // `crate::cli::passthrough`) — this is the one place brief can
+        // `crate::cli::passthrough`) — this is the one place ogt can
         // observe the hint being followed.
         if row.reads_fold {
             reread_rows += 1;
@@ -461,7 +461,7 @@ mod tests {
     /// only in the re-read statistics — never in `row_count`, `raw_bytes`,
     /// `kept_bytes`, or the per-program table. This is the fix for the
     /// original defect: a recovery read now finally FIRES `reads_fold`
-    /// (routed through `brief tail`), and it must not also inflate the
+    /// (routed through `ogt tail`), and it must not also inflate the
     /// handled-totals math with a fabricated row.
     #[test]
     fn uncaptured_row_excluded_from_handled_totals_but_counted_as_a_reread() {

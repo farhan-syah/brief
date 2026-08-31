@@ -3,15 +3,15 @@
 //! Source: reference/rtk/src/core/tee.rs
 //!
 //! Deviations from rtk: no `Config::load()`, no `RTK_TEE_DIR` — the only
-//! env override is `BRIEF_FOLD_DIR`, and the default directory is
-//! `dirs::data_local_dir()/brief/folds` (rtk used `<data dir>/rtk/tee`).
+//! env override is `OGT_FOLD_DIR`, and the default directory is
+//! `dirs::data_local_dir()/ogt/folds` (rtk used `<data dir>/rtk/tee`).
 
 use std::path::{Path, PathBuf};
 
 use super::config::FoldConfig;
 
-/// Resolve the fold directory: `BRIEF_FOLD_DIR` env var, then
-/// `cfg.directory`, then the default `dirs::data_local_dir()/brief/folds`.
+/// Resolve the fold directory: `OGT_FOLD_DIR` env var, then
+/// `cfg.directory`, then the default `dirs::data_local_dir()/ogt/folds`.
 pub(crate) fn resolve_fold_dir(cfg: &FoldConfig) -> Option<PathBuf> {
     resolve_fold_dir_with(cfg, |key| std::env::var(key).ok())
 }
@@ -24,13 +24,13 @@ pub(crate) fn resolve_fold_dir_with(
     cfg: &FoldConfig,
     lookup: impl Fn(&str) -> Option<String>,
 ) -> Option<PathBuf> {
-    if let Some(dir) = lookup("BRIEF_FOLD_DIR") {
+    if let Some(dir) = lookup("OGT_FOLD_DIR") {
         return Some(PathBuf::from(dir));
     }
     if let Some(ref dir) = cfg.directory {
         return Some(dir.clone());
     }
-    dirs::data_local_dir().map(|d| d.join("brief").join("folds"))
+    dirs::data_local_dir().map(|d| d.join("ogt").join("folds"))
 }
 
 /// Ported verbatim from rtk's `core::tee::display_path`.
@@ -105,16 +105,16 @@ pub(crate) fn display_shell_path(path: &Path) -> String {
 /// separate lines (rtk's `format_hint` + `format_tail_hint`) that used to
 /// repeat the same long path — see `Fold::render`.
 ///
-/// Routed through `brief tail ...` rather than a bare `tail ...`: `tail`
-/// is not one of brief's fold targets (`crate::targets::TARGETS`),
-/// so a bare `tail` following this hint runs untracked and brief never
-/// sees the recovery read. `brief tail` still runs `tail` exactly as
+/// Routed through `ogt tail ...` rather than a bare `tail ...`: `tail`
+/// is not one of ogt's fold targets (`crate::targets::TARGETS`),
+/// so a bare `tail` following this hint runs untracked and ogt never
+/// sees the recovery read. `ogt tail` still runs `tail` exactly as
 /// before — `crate::cli::passthrough` forwards it with fully inherited
-/// stdio — but now brief's own argv-inspection can observe it touching the
+/// stdio — but now ogt's own argv-inspection can observe it touching the
 /// fold directory (see `crate::runner::args_read_fold_dir`) and record it.
 pub(crate) fn format_full_output_hint(path: &Path, line_offset: usize) -> String {
     format!(
-        "[full output: brief tail -n +{} {}]",
+        "[full output: ogt tail -n +{} {}]",
         line_offset,
         display_shell_path(path)
     )
@@ -127,12 +127,12 @@ mod tests {
     #[test]
     fn resolve_fold_dir_config_directory_used_when_env_unset() {
         let cfg = FoldConfig {
-            directory: Some(PathBuf::from("/tmp/brief-cfg")),
+            directory: Some(PathBuf::from("/tmp/ogt-cfg")),
             ..FoldConfig::default()
         };
         assert_eq!(
             resolve_fold_dir_with(&cfg, |_| None),
-            Some(PathBuf::from("/tmp/brief-cfg")),
+            Some(PathBuf::from("/tmp/ogt-cfg")),
             "config directory used when env var is unset"
         );
     }
@@ -140,61 +140,61 @@ mod tests {
     #[test]
     fn resolve_fold_dir_env_wins_over_config_directory() {
         let cfg = FoldConfig {
-            directory: Some(PathBuf::from("/tmp/brief-cfg")),
+            directory: Some(PathBuf::from("/tmp/ogt-cfg")),
             ..FoldConfig::default()
         };
         let dir = resolve_fold_dir_with(&cfg, |key| {
-            (key == "BRIEF_FOLD_DIR").then(|| "/tmp/brief-env-override".to_string())
+            (key == "OGT_FOLD_DIR").then(|| "/tmp/ogt-env-override".to_string())
         });
         assert_eq!(
             dir,
-            Some(PathBuf::from("/tmp/brief-env-override")),
+            Some(PathBuf::from("/tmp/ogt-env-override")),
             "env var wins over config directory"
         );
     }
 
     #[test]
-    fn resolve_fold_dir_default_ends_in_brief_folds() {
+    fn resolve_fold_dir_default_ends_in_ogt_folds() {
         let cfg = FoldConfig::default();
         let Some(dir) = resolve_fold_dir_with(&cfg, |_| None) else {
             return; // no data_local_dir on this platform/environment
         };
-        assert!(dir.ends_with("brief/folds"));
+        assert!(dir.ends_with("ogt/folds"));
     }
 
     #[test]
     fn format_full_output_hint_shape() {
-        let path = PathBuf::from("/tmp/brief/folds/123_cargo_test.log");
+        let path = PathBuf::from("/tmp/ogt/folds/123_cargo_test.log");
         let hint = format_full_output_hint(&path, 51);
-        assert!(hint.starts_with("[full output: brief tail -n +51 "));
+        assert!(hint.starts_with("[full output: ogt tail -n +51 "));
         assert!(hint.ends_with(']'));
         assert!(hint.contains("123_cargo_test.log"));
     }
 
     #[test]
     fn display_shell_path_preserves_simple_paths() {
-        let path = PathBuf::from("/tmp/brief/folds/123_cargo_test.log");
+        let path = PathBuf::from("/tmp/ogt/folds/123_cargo_test.log");
         assert_eq!(
             display_shell_path(&path),
-            "/tmp/brief/folds/123_cargo_test.log"
+            "/tmp/ogt/folds/123_cargo_test.log"
         );
     }
 
     #[test]
     fn display_shell_path_quotes_paths_with_spaces() {
-        let path = PathBuf::from("/tmp/brief/Application Support/123_go_test.log");
+        let path = PathBuf::from("/tmp/ogt/Application Support/123_go_test.log");
         assert_eq!(
             display_shell_path(&path),
-            "\"/tmp/brief/Application Support/123_go_test.log\""
+            "\"/tmp/ogt/Application Support/123_go_test.log\""
         );
     }
 
     #[test]
     fn display_shell_path_quotes_backslashes() {
-        let path = PathBuf::from(r"/tmp/brief/folds/path\segment.log");
+        let path = PathBuf::from(r"/tmp/ogt/folds/path\segment.log");
         assert_eq!(
             display_shell_path(&path),
-            r#""/tmp/brief/folds/path\\segment.log""#
+            r#""/tmp/ogt/folds/path\\segment.log""#
         );
     }
 
@@ -206,13 +206,13 @@ mod tests {
         let path = home
             .join("Library")
             .join("Application Support")
-            .join("brief")
+            .join("ogt")
             .join("folds")
             .join("123_go_test.log");
 
         assert_eq!(
             display_shell_path(&path),
-            "\"$HOME/Library/Application Support/brief/folds/123_go_test.log\""
+            "\"$HOME/Library/Application Support/ogt/folds/123_go_test.log\""
         );
     }
 
@@ -224,14 +224,14 @@ mod tests {
         let path = home
             .join("Library")
             .join("Application Support")
-            .join("brief")
+            .join("ogt")
             .join("folds")
             .join("123_go_test.log");
         let hint = format_full_output_hint(&path, 22);
 
         assert_eq!(
             hint,
-            "[full output: brief tail -n +22 \"$HOME/Library/Application Support/brief/folds/123_go_test.log\"]"
+            "[full output: ogt tail -n +22 \"$HOME/Library/Application Support/ogt/folds/123_go_test.log\"]"
         );
         assert!(
             !hint.contains("\\ "),

@@ -1,4 +1,4 @@
-//! Integration tests for the compiled `brief` binary.
+//! Integration tests for the compiled `ogt` binary.
 //!
 //! These specifically cover behavior that only exists at the level of a
 //! real OS process: the passthrough path inherits stdin/stdout/stderr
@@ -10,13 +10,13 @@
 
 use std::process::{Command, Stdio};
 
-fn brief() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_brief"))
+fn ogt() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_ogt"))
 }
 
 #[test]
 fn non_target_command_passes_through_byte_for_byte_with_its_own_exit_code() {
-    let output = brief()
+    let output = ogt()
         .args(["sh", "-c", "printf 'hello\\n'; exit 7"])
         .output()
         .unwrap();
@@ -26,11 +26,11 @@ fn non_target_command_passes_through_byte_for_byte_with_its_own_exit_code() {
 
 #[test]
 fn non_target_command_is_never_folded_even_above_the_threshold() {
-    // `seq`'s basename is not in brief's target set, so it must pass
+    // `seq`'s basename is not in ogt's target set, so it must pass
     // through untouched no matter how low the threshold is pushed.
-    let output = brief()
+    let output = ogt()
         .args(["seq", "1", "40000"])
-        .env("BRIEF_THRESHOLD_TOKENS", "1")
+        .env("OGT_THRESHOLD_TOKENS", "1")
         .output()
         .unwrap();
     assert!(output.status.success());
@@ -40,8 +40,8 @@ fn non_target_command_is_never_folded_even_above_the_threshold() {
 
 #[test]
 fn nonexistent_program_exits_127() {
-    let status = brief()
-        .arg("brief-integration-test-does-not-exist-xyz")
+    let status = ogt()
+        .arg("ogt-integration-test-does-not-exist-xyz")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -50,8 +50,8 @@ fn nonexistent_program_exits_127() {
 }
 
 /// Reproduces and guards the recursion bug PATH shims hit before the fix:
-/// a shim `cat` on PATH exports `BRIEF_SHIM_DIR` and execs `brief cat ...`;
-/// without stripping the shim dir from PATH before resolving `cat`, brief
+/// a shim `cat` on PATH exports `OGT_SHIM_DIR` and execs `ogt cat ...`;
+/// without stripping the shim dir from PATH before resolving `cat`, ogt
 /// would find the shim again and hang forever with zero output and no
 /// tracking row. Bounded with a manual poll/kill loop (no extra crate) so
 /// a regression here fails fast instead of hanging the test suite.
@@ -64,13 +64,13 @@ fn shim_does_not_recurse_into_itself() {
     let tmp = tempfile::tempdir().unwrap();
     let shims_dir = tmp.path().join("shims");
 
-    let status = brief()
+    let status = ogt()
         .args(["init", "--shims", shims_dir.to_str().unwrap()])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
         .unwrap();
-    assert!(status.success(), "brief init --shims must succeed");
+    assert!(status.success(), "ogt init --shims must succeed");
 
     let shim = shims_dir.join("cat");
     assert!(shim.exists(), "cat shim must be generated");
@@ -88,7 +88,7 @@ fn shim_does_not_recurse_into_itself() {
     let mut child = Command::new(&shim)
         .arg(&file)
         .env("PATH", &new_path)
-        .env_remove("BRIEF_SHIM_DIR")
+        .env_remove("OGT_SHIM_DIR")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -113,7 +113,7 @@ fn shim_does_not_recurse_into_itself() {
             let _ = child.wait();
             panic!(
                 "shim hung for 10s — the PATH-shim recursion guard is broken \
-                 (BRIEF_SHIM_DIR must be stripped from PATH before resolving the program)"
+                 (OGT_SHIM_DIR must be stripped from PATH before resolving the program)"
             );
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -133,7 +133,7 @@ fn non_executable_file_exits_126() {
     drop(f);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-    let status = brief()
+    let status = ogt()
         .arg(&path)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

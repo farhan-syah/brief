@@ -3,7 +3,7 @@
 //!
 //! # Why declining is the default, not a fallback
 //!
-//! brief's predecessor rewrote commands it did not fully understand and
+//! ogt's predecessor rewrote commands it did not fully understand and
 //! was lossy on several, so users learned to bypass it before ever seeing
 //! its output. A hook that changes what a command *means* destroys trust;
 //! one that declines to act is merely less useful. Every ambiguous case
@@ -38,18 +38,14 @@ pub(crate) fn rewrite(cmd: &str) -> Option<String> {
 
     let base = basename_of(&prog);
     if !TARGETS.contains(&base) {
-        // Also covers the idempotent case (`brief grep ...` — the first
-        // word's basename is "brief", never one of `TARGETS`) and
+        // Also covers the idempotent case (`ogt grep ...` — the first
+        // word's basename is "ogt", never one of `TARGETS`) and
         // `echo grep`/`man grep`/`xargs grep` (the first word is the
         // wrapper, never the target itself).
         return None;
     }
 
-    Some(format!(
-        "{}brief {}",
-        &cmd[..prog_start],
-        &cmd[prog_start..]
-    ))
+    Some(format!("{}ogt {}", &cmd[..prog_start], &cmd[prog_start..]))
 }
 
 /// Scan `cmd` for unquoted shell metacharacters and, in the same pass,
@@ -228,7 +224,7 @@ mod tests {
     fn simple_grep_is_rewritten() {
         assert_eq!(
             rewrite("grep foo src/"),
-            Some("brief grep foo src/".to_string())
+            Some("ogt grep foo src/".to_string())
         );
     }
 
@@ -236,7 +232,7 @@ mod tests {
     fn pipe_inside_single_quotes_is_rewritten() {
         assert_eq!(
             rewrite("grep -rn 'a|b' src/"),
-            Some("brief grep -rn 'a|b' src/".to_string())
+            Some("ogt grep -rn 'a|b' src/".to_string())
         );
     }
 
@@ -244,7 +240,7 @@ mod tests {
     fn pipe_inside_double_quotes_is_rewritten() {
         assert_eq!(
             rewrite("grep -rn \"a|b\" src/"),
-            Some("brief grep -rn \"a|b\" src/".to_string())
+            Some("ogt grep -rn \"a|b\" src/".to_string())
         );
     }
 
@@ -252,7 +248,7 @@ mod tests {
     fn backslash_escaped_pipe_is_rewritten() {
         assert_eq!(
             rewrite(r"grep -rn a\|b src/"),
-            Some(r"brief grep -rn a\|b src/".to_string())
+            Some(r"ogt grep -rn a\|b src/".to_string())
         );
     }
 
@@ -262,7 +258,7 @@ mod tests {
         // alternation regex inside single quotes. A naive `contains('|')`
         // check would misclassify this as a pipeline.
         let cmd = "grep -rn 'image|generate_image|gpt-image|dall|tool' /path";
-        assert_eq!(rewrite(cmd), Some(format!("brief {cmd}")));
+        assert_eq!(rewrite(cmd), Some(format!("ogt {cmd}")));
     }
 
     #[test]
@@ -357,8 +353,8 @@ mod tests {
     }
 
     #[test]
-    fn already_brief_wrapped_is_idempotent() {
-        assert_eq!(rewrite("brief grep foo src/"), None);
+    fn already_ogt_wrapped_is_idempotent() {
+        assert_eq!(rewrite("ogt grep foo src/"), None);
     }
 
     #[test]
@@ -371,20 +367,20 @@ mod tests {
     fn absolute_path_basename_is_rewritten_preserving_the_path() {
         assert_eq!(
             rewrite("/usr/bin/grep foo src/"),
-            Some("brief /usr/bin/grep foo src/".to_string())
+            Some("ogt /usr/bin/grep foo src/".to_string())
         );
     }
 
     #[test]
     fn leading_var_assignment_is_skipped_to_find_the_program() {
-        // `brief` goes AFTER the assignments, not before them. The shell
+        // `ogt` goes AFTER the assignments, not before them. The shell
         // applies a leading `VAR=val` to the environment of the command it
-        // prefixes, and brief's child inherits it — so the variable still
-        // reaches grep. Putting `brief` first instead would make it try to
+        // prefixes, and ogt's child inherits it — so the variable still
+        // reaches grep. Putting `ogt` first instead would make it try to
         // execute a program literally named `FOO=bar`.
         assert_eq!(
             rewrite("FOO=bar grep foo src/"),
-            Some("FOO=bar brief grep foo src/".to_string())
+            Some("FOO=bar ogt grep foo src/".to_string())
         );
     }
 
@@ -392,7 +388,7 @@ mod tests {
     fn multiple_leading_assignments_are_skipped() {
         assert_eq!(
             rewrite("A=1 B=2 rg foo"),
-            Some("A=1 B=2 brief rg foo".to_string())
+            Some("A=1 B=2 ogt rg foo".to_string())
         );
     }
 
@@ -411,11 +407,11 @@ mod tests {
     fn cat_and_find_are_also_targets() {
         assert_eq!(
             rewrite("cat file.txt"),
-            Some("brief cat file.txt".to_string())
+            Some("ogt cat file.txt".to_string())
         );
         assert_eq!(
             rewrite("find . -name x"),
-            Some("brief find . -name x".to_string())
+            Some("ogt find . -name x".to_string())
         );
     }
 
@@ -424,7 +420,7 @@ mod tests {
         for name in TARGETS {
             assert_eq!(
                 rewrite(&format!("{name} foo")),
-                Some(format!("brief {name} foo")),
+                Some(format!("ogt {name} foo")),
                 "{name} must be rewritten"
             );
         }

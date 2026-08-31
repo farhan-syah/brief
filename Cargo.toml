@@ -1,10 +1,10 @@
 [package]
-name = "brief"
+name = "ogt"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Gate large command output behind a token threshold, with a head/tail summary and complete output on disk"
-repository = "https://github.com/farhan-syah/brief"
+repository = "https://github.com/farhan-syah/ogt"
 readme = "README.md"
 keywords = ["cli", "terminal", "llm", "context", "output"]
 categories = ["command-line-utilities", "development-tools"]

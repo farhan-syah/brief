@@ -1,18 +1,18 @@
-//! Argv dispatch for `brief <program> [args...]` — the `env`/`time`/`nice`
+//! Argv dispatch for `ogt <program> [args...]` — the `env`/`time`/`nice`
 //! pattern. `argv[1]` names the child literally; everything after it is
 //! forwarded byte-for-byte and never inspected or re-parsed. There is no
 //! `--` separator and no argument-parsing dependency: a parser reserves
 //! top-level `-h`/`--help`/`-V`/`--version`, and reserving them would make
-//! `brief grep -h` silently print brief's help instead of grep's — a
+//! `ogt grep -h` silently print ogt's help instead of grep's — a
 //! correctness bug of exactly the kind this tool exists to avoid.
 //!
 //! The literal `argv[1]` values `report`, `hook`, and `init` are reserved
-//! the same way, for `brief report [...]` (see `crate::report`),
-//! `brief hook` (see `crate::hook`, the PreToolUse hook), and
-//! `brief init [...]` (see `crate::init`, its installer). The trade-off
+//! the same way, for `ogt report [...]` (see `crate::report`),
+//! `ogt hook` (see `crate::hook`, the PreToolUse hook), and
+//! `ogt init [...]` (see `crate::init`, its installer). The trade-off
 //! is the same one the flag reservations already accept: a program
 //! literally named `report`, `hook`, or `init` can no longer be run as
-//! `brief <name>`, only by path (e.g. `brief ./hook`).
+//! `ogt <name>`, only by path (e.g. `ogt ./hook`).
 //!
 //! `program` is never spawned with a bare `Command::new(&program)` — see
 //! `path_shim` for why (PATH-shim recursion) and how the actual program
@@ -34,7 +34,7 @@ use super::help::{help_text, version};
 use super::passthrough;
 use super::path_shim;
 
-/// Whether `program`'s basename is one of brief's fold targets — the same
+/// Whether `program`'s basename is one of ogt's fold targets — the same
 /// decision `main_with` routes argv on. Exposed via `cli::is_fold_target`
 /// so `hook::decide`'s tests can assert its rewrite decision agrees with
 /// this one for every name in `crate::targets::TARGETS`.
@@ -42,14 +42,14 @@ pub(crate) fn is_fold_target(program: &OsStr) -> bool {
     TARGETS.contains(&basename(program).as_str())
 }
 
-/// Printed on stderr when brief is invoked with no program at all.
-const USAGE: &str = "usage: brief <program> [args...]\n";
+/// Printed on stderr when ogt is invoked with no program at all.
+const USAGE: &str = "usage: ogt <program> [args...]\n";
 
 /// Run the CLI and return the process exit code. Never panics.
 ///
 /// `args` is the full process argv including `argv[0]`, exactly as
 /// `std::env::args_os()` yields it — this lets tests drive `main_with`
-/// identically to the real binary. `out`/`err` receive brief's own
+/// identically to the real binary. `out`/`err` receive ogt's own
 /// output (help/usage/version) and the fold-gated stdout/stderr of a
 /// target command; a non-target command's streams bypass both and go
 /// straight to this process's real, inherited stdio.
@@ -65,9 +65,9 @@ pub fn main_with(
         return 2;
     };
 
-    // Intercept brief's own help/version ONLY when the entire
-    // post-program argv is this one token — `brief grep --help` (len 2)
-    // must reach grep untouched; only `brief --help` (len 1) is brief's.
+    // Intercept ogt's own help/version ONLY when the entire
+    // post-program argv is this one token — `ogt grep --help` (len 2)
+    // must reach grep untouched; only `ogt --help` (len 1) is ogt's.
     if post_program.len() == 1
         && let Some(flag) = program.to_str()
         && matches!(flag, "--help" | "-h" | "--version" | "-V")
@@ -105,14 +105,14 @@ pub fn main_with(
     }
 
     // PATH-shim support (see `path_shim`): when a shim on PATH invoked us,
-    // it exported BRIEF_SHIM_DIR to its own directory. Spawning `program`
+    // it exported OGT_SHIM_DIR to its own directory. Spawning `program`
     // through a plain `Command::new` would resolve it straight back to
     // that same shim and loop forever, so resolve against PATH with the
     // shim dir removed and spawn the resolved absolute path instead. When
-    // BRIEF_SHIM_DIR is unset, `resolve_spawn` returns `program` and `None`
+    // OGT_SHIM_DIR is unset, `resolve_spawn` returns `program` and `None`
     // unchanged — this path is then identical to before the feature
     // existed.
-    let shim_dir = std::env::var_os(path_shim::BRIEF_SHIM_DIR);
+    let shim_dir = std::env::var_os(path_shim::OGT_SHIM_DIR);
     let path_var = std::env::var_os("PATH");
     let (spawn_program, reduced_path) =
         path_shim::resolve_spawn(&program, shim_dir.as_deref(), path_var.as_deref());
@@ -191,18 +191,18 @@ mod tests {
     fn no_program_exits_2_and_spawns_nothing() {
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let code = main_with(argv(&["brief"]).into_iter(), &mut out, &mut err);
+        let code = main_with(argv(&["ogt"]).into_iter(), &mut out, &mut err);
         assert_eq!(code, 2);
         assert!(out.is_empty());
         assert_eq!(err, USAGE.as_bytes());
     }
 
     #[test]
-    fn bare_help_and_version_flags_print_briefs_own_text() {
+    fn bare_help_and_version_flags_print_ogts_own_text() {
         for flag in ["--help", "-h"] {
             let mut out = Vec::new();
             let mut err = Vec::new();
-            let code = main_with(argv(&["brief", flag]).into_iter(), &mut out, &mut err);
+            let code = main_with(argv(&["ogt", flag]).into_iter(), &mut out, &mut err);
             assert_eq!(code, 0);
             assert_eq!(out, help_text().as_bytes());
             assert!(err.is_empty());
@@ -210,7 +210,7 @@ mod tests {
         for flag in ["--version", "-V"] {
             let mut out = Vec::new();
             let mut err = Vec::new();
-            let code = main_with(argv(&["brief", flag]).into_iter(), &mut out, &mut err);
+            let code = main_with(argv(&["ogt", flag]).into_iter(), &mut out, &mut err);
             assert_eq!(code, 0);
             assert_eq!(out, version().as_bytes());
             assert!(err.is_empty());
@@ -223,19 +223,19 @@ mod tests {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = main_with(
-            argv(&["brief", "grep", "--help"]).into_iter(),
+            argv(&["ogt", "grep", "--help"]).into_iter(),
             &mut out,
             &mut err,
         );
         // grep's own --help exits 0 on GNU grep, 2 on some BSD variants —
         // either way the printed text, not the code, is what proves this
-        // reached grep rather than brief's intercept.
+        // reached grep rather than ogt's intercept.
         let _ = code;
         out.extend_from_slice(&err);
         assert_ne!(
             out,
             help_text().as_bytes(),
-            "brief's own help must not print for `brief grep --help`"
+            "ogt's own help must not print for `ogt grep --help`"
         );
         assert!(!out.is_empty(), "grep --help must print something");
     }
@@ -302,13 +302,13 @@ mod tests {
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = main_with(
-            argv(&["brief", "init", "--help"]).into_iter(),
+            argv(&["ogt", "init", "--help"]).into_iter(),
             &mut out,
             &mut err,
         );
         assert_eq!(code, 0);
         let text = String::from_utf8(out).unwrap();
-        assert!(text.contains("brief init"));
+        assert!(text.contains("ogt init"));
         assert!(err.is_empty());
     }
 
@@ -321,7 +321,7 @@ mod tests {
         // `passthrough::exit_code_for_spawn_error` directly; the real,
         // fully-inherited-stdio version of this is in tests/cli.rs.
         let code = main_with(
-            argv(&["brief", "brief-test-does-not-exist-xyz"]).into_iter(),
+            argv(&["ogt", "ogt-test-does-not-exist-xyz"]).into_iter(),
             &mut out,
             &mut err,
         );

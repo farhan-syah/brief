@@ -33,7 +33,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn signal_death_becomes_128_plus_signal() {
-        // SIGKILL is 9 on every Unix brief targets.
+        // SIGKILL is 9 on every Unix ogt targets.
         let status = Command::new("sh")
             .arg("-c")
             .arg("kill -9 $$")

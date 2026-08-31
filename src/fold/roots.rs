@@ -1,5 +1,5 @@
 //! Per-path scoping: I/O side. Locates the roots file (or reads
-//! `BRIEF_ROOTS`, which stands in for it entirely when set), canonicalizes
+//! `OGT_ROOTS`, which stands in for it entirely when set), canonicalizes
 //! paths where possible, and decides whether the current directory is in
 //! scope. `scope` holds the pure parsing/matching logic this wraps.
 
@@ -43,24 +43,24 @@ pub(crate) fn cwd_in_scope_with(
     is_in_scope(&cwd, &roots)
 }
 
-/// `BRIEF_ROOTS`, when set, is the roots list directly (platform-separated)
+/// `OGT_ROOTS`, when set, is the roots list directly (platform-separated)
 /// and the file is never read — this is the escape hatch the roots file's
 /// docs call out for tests and one-off runs. Otherwise read
-/// `<config_dir>/brief/roots`; an absent or unreadable file yields no
-/// roots (fold everywhere), same as a `BRIEF_ROOTS` entry never fatally
+/// `<config_dir>/ogt/roots`; an absent or unreadable file yields no
+/// roots (fold everywhere), same as an `OGT_ROOTS` entry never fatally
 /// blocking the command.
 fn resolve_roots(
     lookup: &impl Fn(&str) -> Option<String>,
     config_dir: Option<PathBuf>,
     warn: &mut dyn Write,
 ) -> Vec<PathBuf> {
-    if let Some(val) = lookup("BRIEF_ROOTS") {
+    if let Some(val) = lookup("OGT_ROOTS") {
         return parse_roots_env(&val, warn);
     }
     let Some(dir) = config_dir else {
         return Vec::new();
     };
-    let roots_path = dir.join("brief").join("roots");
+    let roots_path = dir.join("ogt").join("roots");
     match std::fs::read_to_string(&roots_path) {
         Ok(contents) => parse_roots_file(&contents, warn),
         Err(_) => Vec::new(),
@@ -98,13 +98,13 @@ mod tests {
     fn roots_file_scopes_to_listed_root() {
         let tmp = tempfile::tempdir().unwrap();
         let config_dir = tmp.path().join("config");
-        std::fs::create_dir_all(config_dir.join("brief")).unwrap();
+        std::fs::create_dir_all(config_dir.join("ogt")).unwrap();
         let root = tmp.path().join("allowed");
         std::fs::create_dir_all(&root).unwrap();
         let outside = tmp.path().join("elsewhere");
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(
-            config_dir.join("brief").join("roots"),
+            config_dir.join("ogt").join("roots"),
             format!("{}\n", root.display()),
         )
         .unwrap();
@@ -127,22 +127,22 @@ mod tests {
     }
 
     #[test]
-    fn brief_roots_env_var_bypasses_the_file_entirely() {
+    fn ogt_roots_env_var_bypasses_the_file_entirely() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("allowed");
         std::fs::create_dir_all(&root).unwrap();
-        // A roots file exists but must never be consulted once BRIEF_ROOTS
+        // A roots file exists but must never be consulted once OGT_ROOTS
         // is set.
         let config_dir = tmp.path().join("config");
-        std::fs::create_dir_all(config_dir.join("brief")).unwrap();
+        std::fs::create_dir_all(config_dir.join("ogt")).unwrap();
         std::fs::write(
-            config_dir.join("brief").join("roots"),
+            config_dir.join("ogt").join("roots"),
             "/this/would/never/match\n",
         )
         .unwrap();
 
         let root_str = root.to_string_lossy().into_owned();
-        let lookup = move |key: &str| (key == "BRIEF_ROOTS").then(|| root_str.clone());
+        let lookup = move |key: &str| (key == "OGT_ROOTS").then(|| root_str.clone());
 
         let mut warn = Vec::new();
         assert!(cwd_in_scope_with(
@@ -157,9 +157,9 @@ mod tests {
     fn all_invalid_roots_falls_back_to_fold_everywhere() {
         let tmp = tempfile::tempdir().unwrap();
         let config_dir = tmp.path().join("config");
-        std::fs::create_dir_all(config_dir.join("brief")).unwrap();
+        std::fs::create_dir_all(config_dir.join("ogt")).unwrap();
         std::fs::write(
-            config_dir.join("brief").join("roots"),
+            config_dir.join("ogt").join("roots"),
             "relative/one\nrelative/two\n",
         )
         .unwrap();

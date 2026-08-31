@@ -1,5 +1,5 @@
 //! Ported verbatim from rtk's `core::tracking::estimate_tokens` — kept
-//! byte-identical so brief's fold-trigger numbers stay comparable to
+//! byte-identical so ogt's fold-trigger numbers stay comparable to
 //! rtk's historical token-savings database.
 //! Source: reference/rtk/src/core/tracking.rs
 

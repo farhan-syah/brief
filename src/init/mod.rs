@@ -1,4 +1,4 @@
-//! `brief init`: install or uninstall brief's PreToolUse hook in the
+//! `ogt init`: install or uninstall ogt's PreToolUse hook in the
 //! user's Claude Code settings.json, or generate/remove PATH shims
 //! (`--shims <dir>`) that work with any harness. Wiring only — see `cli`
 //! for argv parsing, `fs_ops` for home-directory resolution, backup,
@@ -17,7 +17,7 @@
 //! write atomically), never a guess at an unrecognized settings.json
 //! shape (refuse and print the block for the user to paste by hand — see
 //! `settings_edit`'s module doc), and shim uninstall only ever removes a
-//! file carrying brief's own marker (see `shims`).
+//! file carrying ogt's own marker (see `shims`).
 
 mod cli;
 mod fs_ops;

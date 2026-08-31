@@ -17,11 +17,11 @@ version=$2
 [[ $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?$ ]] || fail "invalid version '$version'"
 
 expected=(
-  "brief-${version}-linux-x64.tar.gz"
-  "brief-${version}-linux-arm64.tar.gz"
-  "brief-${version}-macos-arm64.tar.gz"
-  "brief-${version}-macos-x64.tar.gz"
-  "brief-${version}-windows-x64.zip"
+  "ogt-${version}-linux-x64.tar.gz"
+  "ogt-${version}-linux-arm64.tar.gz"
+  "ogt-${version}-macos-arm64.tar.gz"
+  "ogt-${version}-macos-x64.tar.gz"
+  "ogt-${version}-windows-x64.zip"
 )
 is_expected() {
   local candidate

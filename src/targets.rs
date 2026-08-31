@@ -1,4 +1,4 @@
-//! The one list of programs brief folds — matched on the basename of
+//! The one list of programs ogt folds — matched on the basename of
 //! `argv[1]` by `cli::dispatch::is_fold_target` and on the first
 //! remaining word's basename by `hook::decide::rewrite`. Both modules
 //! import this constant instead of keeping their own copy: two
@@ -8,7 +8,7 @@
 //! `hook::decide`'s tests for the regression guard that checks the two
 //! real decision functions agree on every name here.
 
-/// Programs brief folds. Everything else takes the passthrough path
+/// Programs ogt folds. Everything else takes the passthrough path
 /// (`cli::dispatch`) or is left alone untouched (`hook::decide`).
 pub(crate) const TARGETS: [&str; 8] = ["grep", "cat", "find", "rg", "cargo", "git", "ls", "diff"];
 

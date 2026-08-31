@@ -13,7 +13,7 @@ on:
         required: true
         type: string
       publish_crate:
-        description: Publish brief to crates.io
+        description: Publish ogt to crates.io
         required: false
         type: boolean
         default: true
@@ -67,17 +67,17 @@ jobs:
           VERSION: ${{ needs.validate-version.outputs.version }}
         run: |
           set -euo pipefail
-          target_dir="$RUNNER_TEMP/brief-package-target"
+          target_dir="$RUNNER_TEMP/ogt-package-target"
           rm -rf "$target_dir"
           cargo package --locked --allow-dirty --target-dir "$target_dir"
-          archive="$target_dir/package/brief-${VERSION}.crate"
+          archive="$target_dir/package/ogt-${VERSION}.crate"
           if [[ ! -f $archive || -L $archive ]]; then
             printf '::error::cargo package did not create %s\n' "$archive" >&2
             exit 1
           fi
           printf 'archive=%s\n' "$archive" >>"$GITHUB_OUTPUT"
 
-      - name: Publish brief
+      - name: Publish ogt
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           VERSION: ${{ needs.validate-version.outputs.version }}
@@ -89,32 +89,32 @@ jobs:
           if ! status=$(curl --silent --show-error \
             --output "$response" \
             --write-out '%{http_code}' \
-            --header 'User-Agent: brief-ci (github.com/farhan-syah/brief)' \
-            "https://crates.io/api/v1/crates/brief/${VERSION}"); then
-            printf '::error::could not query crates.io for brief@%s\n' "$VERSION" >&2
+            --header 'User-Agent: ogt-ci (github.com/farhan-syah/ogt)' \
+            "https://crates.io/api/v1/crates/ogt/${VERSION}"); then
+            printf '::error::could not query crates.io for ogt@%s\n' "$VERSION" >&2
             exit 1
           fi
 
           case "$status" in
             200)
               remote_checksum=$(jq -er '.version.checksum | strings' "$response") || {
-                printf '::error::crates.io response has no checksum for brief@%s\n' "$VERSION" >&2
+                printf '::error::crates.io response has no checksum for ogt@%s\n' "$VERSION" >&2
                 exit 1
               }
               local_checksum=$(sha256sum "$ARCHIVE" | awk '{print $1}')
               if [[ $remote_checksum != "$local_checksum" ]]; then
-                printf '::error::crates.io checksum mismatch for brief@%s\n' "$VERSION" >&2
+                printf '::error::crates.io checksum mismatch for ogt@%s\n' "$VERSION" >&2
                 printf '::error::remote=%s local=%s\n' "$remote_checksum" "$local_checksum" >&2
                 exit 1
               fi
-              printf 'brief@%s already published with the matching checksum; skipping.\n' "$VERSION"
+              printf 'ogt@%s already published with the matching checksum; skipping.\n' "$VERSION"
               ;;
             404)
-              printf 'Publishing brief@%s...\n' "$VERSION"
+              printf 'Publishing ogt@%s...\n' "$VERSION"
               cargo publish --locked --allow-dirty
               ;;
             *)
-              printf '::error::unexpected crates.io HTTP status %s for brief@%s\n' "$status" "$VERSION" >&2
+              printf '::error::unexpected crates.io HTTP status %s for ogt@%s\n' "$status" "$VERSION" >&2
               cat "$response" >&2
               exit 1
               ;;
@@ -160,7 +160,7 @@ jobs:
       - name: Download prepared binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: brief-*
+          pattern: ogt-*
           run-id: ${{ inputs.prepare_run_id }}
           github-token: ${{ github.token }}
           path: ./artifacts
@@ -190,8 +190,8 @@ jobs:
 
           artifact_dir = Path(sys.argv[1])
           version = sys.argv[2]
-          expected_tar_members = {"brief", "LICENSE", "NOTICE"}
-          expected_zip_members = {"brief.exe", "LICENSE", "NOTICE"}
+          expected_tar_members = {"ogt", "LICENSE", "NOTICE"}
+          expected_zip_members = {"ogt.exe", "LICENSE", "NOTICE"}
 
           def fail(message: str) -> None:
               print(f"::error::{message}", file=sys.stderr)
@@ -231,12 +231,12 @@ jobs:
                       fail(f"{archive.name} contains a non-regular member: {member.filename}")
 
           tar_archives = [
-              artifact_dir / f"brief-{version}-linux-x64.tar.gz",
-              artifact_dir / f"brief-{version}-linux-arm64.tar.gz",
-              artifact_dir / f"brief-{version}-macos-arm64.tar.gz",
-              artifact_dir / f"brief-{version}-macos-x64.tar.gz",
+              artifact_dir / f"ogt-{version}-linux-x64.tar.gz",
+              artifact_dir / f"ogt-{version}-linux-arm64.tar.gz",
+              artifact_dir / f"ogt-{version}-macos-arm64.tar.gz",
+              artifact_dir / f"ogt-{version}-macos-x64.tar.gz",
           ]
-          zip_archive = artifact_dir / f"brief-{version}-windows-x64.zip"
+          zip_archive = artifact_dir / f"ogt-{version}-windows-x64.zip"
           for archive in tar_archives:
               check_tar(archive)
           check_zip(zip_archive)
@@ -252,11 +252,11 @@ jobs:
           set -euo pipefail
           cd "$ARTIFACT_DIR"
           printf '%s\n' \
-            "brief-${VERSION}-linux-x64.tar.gz" \
-            "brief-${VERSION}-linux-arm64.tar.gz" \
-            "brief-${VERSION}-macos-arm64.tar.gz" \
-            "brief-${VERSION}-macos-x64.tar.gz" \
-            "brief-${VERSION}-windows-x64.zip" \
+            "ogt-${VERSION}-linux-x64.tar.gz" \
+            "ogt-${VERSION}-linux-arm64.tar.gz" \
+            "ogt-${VERSION}-macos-arm64.tar.gz" \
+            "ogt-${VERSION}-macos-x64.tar.gz" \
+            "ogt-${VERSION}-windows-x64.zip" \
             | LC_ALL=C sort \
             | xargs sha256sum >SHA256SUMS
           sha256sum -c SHA256SUMS
@@ -274,9 +274,9 @@ jobs:
             cat /tmp/changelog-section.md
             printf '\n'
             if [[ -n $previous_tag ]]; then
-              printf '**Full diff:** https://github.com/farhan-syah/brief/compare/%s...%s\n' "$previous_tag" "$TAG"
+              printf '**Full diff:** https://github.com/farhan-syah/ogt/compare/%s...%s\n' "$previous_tag" "$TAG"
             else
-              printf '**Tree:** https://github.com/farhan-syah/brief/tree/%s\n' "$TAG"
+              printf '**Tree:** https://github.com/farhan-syah/ogt/tree/%s\n' "$TAG"
             fi
           } >/tmp/release-notes.md
 
@@ -284,7 +284,7 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ inputs.tag }}
-          name: brief ${{ needs.validate-version.outputs.version }}
+          name: ogt ${{ needs.validate-version.outputs.version }}
           body_path: /tmp/release-notes.md
           draft: false
           prerelease: ${{ needs.validate-version.outputs.is_full_release != 'true' }}

@@ -9,8 +9,8 @@
 //! head/tail summary is printed.
 //!
 //! Folding never depends on whether the destination is a terminal:
-//! `brief cmd > file.txt` behaves identically to `brief cmd | cat`.
-//! Invoking brief is the opt-in; there is no isatty heuristic.
+//! `ogt cmd > file.txt` behaves identically to `ogt cmd | cat`.
+//! Invoking ogt is the opt-in; there is no isatty heuristic.
 //!
 //! # Consequence: output appears when the child exits
 //!
@@ -20,7 +20,7 @@
 //! to running the command directly; only the timing differs. A long-running
 //! command shows nothing while it works, and progress output that relies on
 //! incremental display (spinners, percent counters) arrives all at once at
-//! the end. `brief cargo build` on a large crate is where this is most
+//! the end. `ogt cargo build` on a large crate is where this is most
 //! noticeable: nothing prints until the build finishes, where a direct
 //! `cargo build` streams output as it compiles. Memory is still bounded: a
 //! stream that crosses the gate spills to its fold file and stops

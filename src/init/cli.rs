@@ -1,4 +1,4 @@
-//! `brief init`'s own argv parsing and entry point — installs or
+//! `ogt init`'s own argv parsing and entry point — installs or
 //! uninstalls the PreToolUse hook in the user's Claude Code settings.json,
 //! or (with `--shims <dir>`) generates/removes PATH shims. With no flags
 //! at all and a terminal on stdin, runs the interactive flow in
@@ -13,19 +13,19 @@ use super::fs_ops;
 use super::interactive;
 use super::shim_fs;
 
-const USAGE: &str = "usage: brief init [--dry-run] [--uninstall] [--shims <dir>] [--yes]\n";
+const USAGE: &str = "usage: ogt init [--dry-run] [--uninstall] [--shims <dir>] [--yes]\n";
 
-/// Text for `brief init --help`. A function, not a `const`, because the
+/// Text for `ogt init --help`. A function, not a `const`, because the
 /// scope line names every program in `crate::targets::TARGETS`.
 fn help_text() -> String {
     format!(
         "\
-brief init — install brief's PreToolUse hook in Claude Code's settings.json,
+ogt init — install ogt's PreToolUse hook in Claude Code's settings.json,
 or generate PATH shims that work with any harness and any agent.
 
-The hook rewrites plain {targets} Bash calls to go through brief,
+The hook rewrites plain {targets} Bash calls to go through ogt,
 so their output is gated behind the same token threshold as a direct
-`brief grep ...` invocation. It never changes what a command means: any
+`ogt grep ...` invocation. It never changes what a command means: any
 command it cannot confidently classify is left alone untouched.
 
 Idempotent: running this again when the hook is already installed does
@@ -40,8 +40,8 @@ immediate install too, `--yes` or not.
 
 Flags:
   --dry-run       print what would change; touch nothing (hook install only)
-  --uninstall     remove exactly brief's own hook entry, or with --shims
-                  remove exactly brief's own shims; absent is a no-op
+  --uninstall     remove exactly ogt's own hook entry, or with --shims
+                  remove exactly ogt's own shims; absent is a no-op
   --shims <dir>   generate one PATH shim per {targets} program into <dir>
   --yes           skip the interactive flow; install immediately
   --help, -h      this text
@@ -49,20 +49,20 @@ Flags:
 PATH shims are a directory of small wrapper scripts placed early on PATH.
 Unlike the hook above, they work with every shell and every agent,
 including one that spawns commands with no shell at all, and need no
-per-harness adapter. `brief init --shims <dir>` (re-)generates one shim
-per program in brief's target list and prints the exact PATH line to add;
+per-harness adapter. `ogt init --shims <dir>` (re-)generates one shim
+per program in ogt's target list and prints the exact PATH line to add;
 the shim directory must come FIRST on PATH or the shims are inert.
-Re-run the same command to regenerate the shims after brief is upgraded
+Re-run the same command to regenerate the shims after ogt is upgraded
 with a different target list. `--shims <dir> --uninstall` removes only
-files carrying brief's own marker, leaving anything else already in <dir>
+files carrying ogt's own marker, leaving anything else already in <dir>
 untouched. With shims on PATH, the hook above is redundant; both may be
 installed at once, that is not an error, only your choice.
 
-Usage: brief init [--dry-run] [--uninstall] [--yes]
-       brief init --shims <dir> [--uninstall]
+Usage: ogt init [--dry-run] [--uninstall] [--yes]
+       ogt init --shims <dir> [--uninstall]
 
 To run a program literally named \"init\", invoke it by path:
-brief ./init
+ogt ./init
 ",
         targets = crate::targets::slash_list()
     )
@@ -114,7 +114,7 @@ fn parse_args(args: &[String]) -> ParseOutcome<'_> {
     })
 }
 
-/// Entry point wired from `cli::dispatch` for `brief init [...]`.
+/// Entry point wired from `cli::dispatch` for `ogt init [...]`.
 /// `args` is the argv following the literal `init` token.
 pub(crate) fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let stdin = std::io::stdin();
@@ -126,14 +126,14 @@ pub(crate) fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> 
         err,
         dirs::home_dir().as_deref(),
         std::env::current_exe().ok().as_deref(),
-        dirs::data_local_dir().map(|d| d.join("brief").join("shims")),
+        dirs::data_local_dir().map(|d| d.join("ogt").join("shims")),
         dirs::config_dir(),
         stdin_is_terminal,
         &mut reader,
     )
 }
 
-/// `run` with the home/shim/config directories, brief's own executable
+/// `run` with the home/shim/config directories, ogt's own executable
 /// path, terminal-ness, and the stdin reader all injected, so tests can
 /// drive this as a pure function against a tempdir and a scripted reader
 /// instead of the real `~/.claude`, real data/config dirs, the real
@@ -144,7 +144,7 @@ pub(crate) fn run_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
     home_dir: Option<&Path>,
-    brief_exe: Option<&Path>,
+    ogt_exe: Option<&Path>,
     default_shims_dir: Option<PathBuf>,
     config_dir: Option<PathBuf>,
     stdin_is_terminal: bool,
@@ -163,7 +163,7 @@ pub(crate) fn run_with(
     };
 
     if let Some(dir) = parsed.shims_dir {
-        return run_shims(Path::new(dir), parsed.uninstall, brief_exe, out, err);
+        return run_shims(Path::new(dir), parsed.uninstall, ogt_exe, out, err);
     }
 
     // Interactive only for the plain install path: no --dry-run,
@@ -178,7 +178,7 @@ pub(crate) fn run_with(
             home_dir,
             default_shims_dir,
             config_dir,
-            brief_exe,
+            ogt_exe,
         );
     }
 
@@ -186,28 +186,28 @@ pub(crate) fn run_with(
 }
 
 /// The `--shims <dir>` branch: install (regenerate) or uninstall, wired to
-/// `shim_fs`. `brief_exe` is `None` only when `std::env::current_exe()`
+/// `shim_fs`. `ogt_exe` is `None` only when `std::env::current_exe()`
 /// itself failed — installing then has nothing correct to reference, so
-/// it is refused rather than falling back to a bare `brief` that a shim's
+/// it is refused rather than falling back to a bare `ogt` that a shim's
 /// own directory could shadow.
 fn run_shims(
     dir: &Path,
     uninstall: bool,
-    brief_exe: Option<&Path>,
+    ogt_exe: Option<&Path>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> i32 {
     if uninstall {
         return shim_fs::uninstall_shims(dir, out, err);
     }
-    let Some(brief_exe) = brief_exe else {
+    let Some(ogt_exe) = ogt_exe else {
         let _ = writeln!(
             err,
-            "brief init --shims: could not determine brief's own executable path"
+            "ogt init --shims: could not determine ogt's own executable path"
         );
         return 1;
     };
-    shim_fs::install_shims(dir, brief_exe, out, err)
+    shim_fs::install_shims(dir, ogt_exe, out, err)
 }
 
 #[cfg(test)]
@@ -222,11 +222,11 @@ mod tests {
         out: &mut dyn Write,
         err: &mut dyn Write,
         home_dir: Option<&Path>,
-        brief_exe: Option<&Path>,
+        ogt_exe: Option<&Path>,
     ) -> i32 {
         let mut empty: &[u8] = &[];
         run_with(
-            args, out, err, home_dir, brief_exe, None, None, false, &mut empty,
+            args, out, err, home_dir, ogt_exe, None, None, false, &mut empty,
         )
     }
 
@@ -383,10 +383,10 @@ mod tests {
     }
 
     #[test]
-    fn shims_flag_installs_when_brief_exe_is_injected() {
+    fn shims_flag_installs_when_ogt_exe_is_injected() {
         let tmp = tempfile::tempdir().unwrap();
         let shims_dir = tmp.path().join("shims");
-        let brief_exe = tmp.path().join("brief");
+        let ogt_exe = tmp.path().join("ogt");
         let mut out = Vec::new();
         let mut err = Vec::new();
         let code = run_noninteractive(
@@ -397,7 +397,7 @@ mod tests {
             &mut out,
             &mut err,
             None,
-            Some(&brief_exe),
+            Some(&ogt_exe),
         );
         assert_eq!(code, 0, "stderr: {}", String::from_utf8_lossy(&err));
         for program in crate::targets::TARGETS {
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn shims_flag_without_injected_brief_exe_refuses_rather_than_guessing() {
+    fn shims_flag_without_injected_ogt_exe_refuses_rather_than_guessing() {
         let tmp = tempfile::tempdir().unwrap();
         let shims_dir = tmp.path().join("shims");
         let mut out = Vec::new();
@@ -428,10 +428,10 @@ mod tests {
     }
 
     #[test]
-    fn shims_flag_with_uninstall_removes_shims_without_needing_brief_exe() {
+    fn shims_flag_with_uninstall_removes_shims_without_needing_ogt_exe() {
         let tmp = tempfile::tempdir().unwrap();
         let shims_dir = tmp.path().join("shims");
-        let brief_exe = tmp.path().join("brief");
+        let ogt_exe = tmp.path().join("ogt");
         run_noninteractive(
             &[
                 "--shims".to_string(),
@@ -440,7 +440,7 @@ mod tests {
             &mut Vec::new(),
             &mut Vec::new(),
             None,
-            Some(&brief_exe),
+            Some(&ogt_exe),
         );
 
         let mut out = Vec::new();
