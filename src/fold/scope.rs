@@ -4,6 +4,7 @@
 //! roots file, reading `BRIEF_ROOTS`, canonicalizing paths), matching how
 //! `fold::config` and `track::paths` separate pure logic from I/O.
 
+use std::ffi::OsStr;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -32,14 +33,15 @@ pub(crate) fn parse_roots_file(contents: &str, warn: &mut dyn Write) -> Vec<Path
     roots
 }
 
-/// Parse `BRIEF_ROOTS`: colon-separated absolute paths, for tests and
+/// Parse `BRIEF_ROOTS`: platform-separated absolute paths, for tests and
 /// one-off runs. Stands in for the roots file entirely when set — same
 /// per-entry validation, minus the file's comment/blank-line handling
 /// (a single env var has no lines to skip).
 pub(crate) fn parse_roots_env(val: &str, warn: &mut dyn Write) -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    for raw_entry in val.split(':') {
-        let trimmed = raw_entry.trim();
+    for raw_entry in std::env::split_paths(OsStr::new(val)) {
+        let trimmed = raw_entry.to_string_lossy();
+        let trimmed = trimmed.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -71,34 +73,54 @@ pub(crate) fn is_in_scope(cwd: &Path, roots: &[PathBuf]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+    use std::path::{Path, PathBuf};
+
     use super::*;
+
+    fn absolute_path(name: &str) -> PathBuf {
+        env::temp_dir().join(name)
+    }
+
+    fn path_list(paths: &[&Path]) -> String {
+        env::join_paths(paths.iter().copied())
+            .unwrap()
+            .to_string_lossy()
+            .into_owned()
+    }
 
     #[test]
     fn parse_roots_file_skips_blanks_and_comments() {
+        let project = absolute_path("brief-scope-project");
+        let work = absolute_path("brief-scope-work");
+        let contents = format!(
+            "\n  \n# a comment\n{}\n   # indented comment\n{}  \n",
+            project.display(),
+            work.display()
+        );
         let mut warn = Vec::new();
-        let roots = parse_roots_file(
-            "\n  \n# a comment\n/home/user/proj\n   # indented comment\n/opt/work  \n",
-            &mut warn,
-        );
-        assert_eq!(
-            roots,
-            vec![PathBuf::from("/home/user/proj"), PathBuf::from("/opt/work")]
-        );
+        let roots = parse_roots_file(&contents, &mut warn);
+        assert_eq!(roots, vec![project, work]);
         assert!(warn.is_empty());
     }
 
     #[test]
     fn parse_roots_file_trims_trailing_whitespace() {
+        let project = absolute_path("brief-scope-project");
         let mut warn = Vec::new();
-        let roots = parse_roots_file("/home/user/proj   \t\n", &mut warn);
-        assert_eq!(roots, vec![PathBuf::from("/home/user/proj")]);
+        let roots = parse_roots_file(&format!("{}   \t\n", project.display()), &mut warn);
+        assert_eq!(roots, vec![project]);
     }
 
     #[test]
     fn parse_roots_file_warns_and_skips_a_relative_path() {
+        let project = absolute_path("brief-scope-project");
         let mut warn = Vec::new();
-        let roots = parse_roots_file("relative/path\n/home/user/proj\n", &mut warn);
-        assert_eq!(roots, vec![PathBuf::from("/home/user/proj")]);
+        let roots = parse_roots_file(
+            &format!("relative/path\n{}\n", project.display()),
+            &mut warn,
+        );
+        assert_eq!(roots, vec![project]);
         let warning = String::from_utf8(warn).unwrap();
         assert!(warning.contains("line 1"));
         assert!(warning.contains("relative/path"));
@@ -112,24 +134,25 @@ mod tests {
     }
 
     #[test]
-    fn parse_roots_env_splits_on_colon() {
+    fn parse_roots_env_splits_on_the_platform_path_separator() {
+        let first = absolute_path("brief-scope-a");
+        let second = absolute_path("brief-scope-b");
+        let value = path_list(&[&first, &second]);
         let mut warn = Vec::new();
-        let roots = parse_roots_env("/home/a:/home/b", &mut warn);
-        assert_eq!(
-            roots,
-            vec![PathBuf::from("/home/a"), PathBuf::from("/home/b")]
-        );
+        let roots = parse_roots_env(&value, &mut warn);
+        assert_eq!(roots, vec![first, second]);
         assert!(warn.is_empty());
     }
 
     #[test]
     fn parse_roots_env_skips_invalid_entries_with_a_warning() {
+        let first = absolute_path("brief-scope-a");
+        let second = absolute_path("brief-scope-b");
+        let relative = Path::new("relative");
+        let value = path_list(&[&first, relative, &second]);
         let mut warn = Vec::new();
-        let roots = parse_roots_env("/home/a:relative:/home/b", &mut warn);
-        assert_eq!(
-            roots,
-            vec![PathBuf::from("/home/a"), PathBuf::from("/home/b")]
-        );
+        let roots = parse_roots_env(&value, &mut warn);
+        assert_eq!(roots, vec![first, second]);
         let warning = String::from_utf8(warn).unwrap();
         assert!(warning.contains("relative"));
     }
@@ -141,23 +164,25 @@ mod tests {
 
     #[test]
     fn is_in_scope_true_at_a_root_and_under_it() {
-        let roots = vec![PathBuf::from("/home/a")];
-        assert!(is_in_scope(Path::new("/home/a"), &roots));
-        assert!(is_in_scope(Path::new("/home/a/sub/dir"), &roots));
+        let root = absolute_path("brief-scope-root");
+        let roots = vec![root.clone()];
+        assert!(is_in_scope(&root, &roots));
+        assert!(is_in_scope(&root.join("sub").join("dir"), &roots));
     }
 
     #[test]
     fn is_in_scope_false_outside_every_root() {
-        let roots = vec![PathBuf::from("/home/a")];
-        assert!(!is_in_scope(Path::new("/home/b"), &roots));
+        let roots = vec![absolute_path("brief-scope-root")];
+        let outside = absolute_path("brief-scope-outside");
+        assert!(!is_in_scope(&outside, &roots));
     }
 
     #[test]
     fn is_in_scope_component_wise_not_string_prefix() {
-        // A naive string prefix check would wrongly match "/home/abc"
-        // against the root "/home/a".
-        let roots = vec![PathBuf::from("/home/a")];
-        assert!(!is_in_scope(Path::new("/home/abc"), &roots));
-        assert!(!is_in_scope(Path::new("/home/abc/sub"), &roots));
+        let root = absolute_path("brief-scope-root");
+        let sibling = absolute_path("brief-scope-root-other");
+        let roots = vec![root];
+        assert!(!is_in_scope(&sibling, &roots));
+        assert!(!is_in_scope(&sibling.join("sub"), &roots));
     }
 }

@@ -43,7 +43,7 @@ pub(crate) fn cwd_in_scope_with(
     is_in_scope(&cwd, &roots)
 }
 
-/// `BRIEF_ROOTS`, when set, is the roots list directly (colon-separated)
+/// `BRIEF_ROOTS`, when set, is the roots list directly (platform-separated)
 /// and the file is never read — this is the escape hatch the roots file's
 /// docs call out for tests and one-off runs. Otherwise read
 /// `<config_dir>/brief/roots`; an absent or unreadable file yields no

@@ -142,6 +142,8 @@ brief works in any repository and folds output everywhere by default.
 
 Limit folding to absolute roots with `BRIEF_ROOTS`.
 
+Use the platform path-list separator: `:` on Unix and `;` on Windows.
+
 ```sh
 BRIEF_ROOTS="/work/app:/work/lib" brief rg "TODO" .
 ```
@@ -202,7 +204,7 @@ They are not an apples-to-apples benchmark, and neither proves billing savings.
 | `BRIEF_ENABLED`          | Set `0` or `false` to disable folding.                                         |
 | `BRIEF`                  | Short enable or disable alias. `BRIEF_ENABLED` wins when both exist.           |
 | `BRIEF_FOLD_DIR`         | Set the directory for complete folded output.                                  |
-| `BRIEF_ROOTS`            | Set colon-separated absolute roots for folding. This overrides the roots file. |
+| `BRIEF_ROOTS`            | Set platform-separated absolute roots for folding. This overrides the roots file. |
 
 ## Report flags
 

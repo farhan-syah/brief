@@ -27,7 +27,7 @@ Environment overrides:
   BRIEF                    short alias for BRIEF_ENABLED; BRIEF_ENABLED wins
                            when both are set
   BRIEF_FOLD_DIR           directory fold files are written to
-  BRIEF_ROOTS              colon-separated paths folding is scoped to
+  BRIEF_ROOTS              platform-separated paths folding is scoped to
                            (overrides the roots file; see below)
 
 Per-path scoping: brief folds everywhere by default. To scope it to one or

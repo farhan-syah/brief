@@ -231,6 +231,7 @@ mod tests {
         // either way the printed text, not the code, is what proves this
         // reached grep rather than brief's intercept.
         let _ = code;
+        out.extend_from_slice(&err);
         assert_ne!(
             out,
             help_text().as_bytes(),

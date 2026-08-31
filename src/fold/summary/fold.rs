@@ -8,19 +8,17 @@ use std::path::PathBuf;
 
 use crate::thousands::with_thousands_separator;
 
-use super::config::FoldConfig;
-use super::paths::{format_full_output_hint, resolve_fold_dir};
-use super::tokens::estimate_tokens;
-use super::write::write_fold_file;
+use super::super::config::FoldConfig;
+use super::super::paths::{format_full_output_hint, resolve_fold_dir};
+use super::super::tokens::estimate_tokens;
+use super::super::write::write_fold_file;
+use super::lines::{count_lines, first_lines, last_lines};
+use super::preview::{SLICE_MAX_BYTES, lossy_prefix, lossy_suffix};
 
 /// Lines kept from the start of output when folding.
 pub(crate) const HEAD_LINES: usize = 50;
 /// Lines kept from the end of output when folding.
 pub(crate) const TAIL_LINES: usize = 50;
-/// Byte cap per kept slice (head/tail), guarding against a single huge
-/// line (e.g. minified JSON) defeating the line-based split and making
-/// the "compact" fold as large as the raw output.
-pub(crate) const SLICE_MAX_BYTES: usize = 8_000;
 
 /// Result of a fold attempt.
 #[derive(Debug, Clone)]
@@ -156,150 +154,10 @@ pub fn fold_output(raw: &str, slug: &str, cfg: &FoldConfig) -> io::Result<FoldOu
     )))
 }
 
-/// Total line count of `bytes`, defined as the newline count plus a final
-/// unterminated line if there is one. Identical to `str::lines().count()`
-/// for valid UTF-8, but computable from a running counter, which is what
-/// the streaming runner needs — it counts `\n` per chunk and never
-/// materializes a line.
-pub(crate) fn count_lines(bytes: &[u8]) -> usize {
-    total_lines_from(
-        bytes.iter().filter(|b| **b == b'\n').count(),
-        bytes.last().copied(),
-    )
-}
-
-/// `count_lines` in incremental form: newlines seen so far plus the last
-/// byte seen. The streaming runner keeps exactly these two values.
-pub(crate) fn total_lines_from(newlines: usize, last_byte: Option<u8>) -> usize {
-    match last_byte {
-        Some(b'\n') | None => newlines,
-        // Trailing bytes after the last newline are one more (unterminated) line.
-        Some(_) => newlines + 1,
-    }
-}
-
-/// First `n` lines of `bytes`, without the newline that terminates line `n`.
-/// Returns everything when `bytes` holds fewer than `n` newlines — including
-/// a trailing partial line, which is what a byte-bounded head window has.
-fn first_lines(bytes: &[u8], n: usize) -> &[u8] {
-    if n == 0 {
-        return &[];
-    }
-    let mut seen = 0;
-    for (i, b) in bytes.iter().enumerate() {
-        if *b == b'\n' {
-            seen += 1;
-            if seen == n {
-                return &bytes[..i];
-            }
-        }
-    }
-    bytes
-}
-
-/// Last `n` lines of `bytes`, without a trailing newline. One trailing
-/// newline is dropped first so `"a\nb\n"` with `n == 1` yields `"b"`, not an
-/// empty final line.
-fn last_lines(bytes: &[u8], n: usize) -> &[u8] {
-    if n == 0 {
-        return &[];
-    }
-    let end = match bytes.last() {
-        Some(b'\n') => bytes.len() - 1,
-        _ => bytes.len(),
-    };
-    let body = &bytes[..end];
-    let mut seen = 0;
-    for i in (0..body.len()).rev() {
-        if body[i] == b'\n' {
-            seen += 1;
-            if seen == n {
-                return &body[i + 1..];
-            }
-        }
-    }
-    body
-}
-
-/// Decode at most `max_bytes` from the start of `bytes` for display.
-///
-/// A multi-byte char straddling the cap is dropped rather than turned into
-/// U+FFFD, so a clean cut of valid UTF-8 stays clean. Genuinely invalid
-/// bytes still decode lossily — the preview must never fail on binary
-/// output — and the result is re-capped afterwards because each U+FFFD is
-/// wider than the byte it replaces.
-fn lossy_prefix(bytes: &[u8], max_bytes: usize) -> String {
-    let slice = &bytes[..max_bytes.min(bytes.len())];
-    let end = match std::str::from_utf8(slice) {
-        Ok(_) => slice.len(),
-        // error_len None means "valid so far, sequence cut off at the end".
-        Err(e) if e.error_len().is_none() => e.valid_up_to(),
-        Err(_) => slice.len(),
-    };
-    let text = String::from_utf8_lossy(&slice[..end]).into_owned();
-    if text.len() <= max_bytes {
-        return text;
-    }
-    take_prefix_bytes(&text, max_bytes)
-}
-
-/// Decode at most `max_bytes` from the end of `bytes` for display. Mirror of
-/// `lossy_prefix`: leading continuation bytes left by the cut are dropped.
-fn lossy_suffix(bytes: &[u8], max_bytes: usize) -> String {
-    let start = bytes.len().saturating_sub(max_bytes);
-    let mut slice = &bytes[start..];
-    // A UTF-8 continuation byte is 0b10xxxxxx and can never start a char; at
-    // most three of them precede the first real boundary. Applied even at
-    // start == 0, because a byte-bounded tail window can itself begin
-    // mid-char. Well-formed text is unaffected.
-    let skip = slice
-        .iter()
-        .take(3)
-        .take_while(|b| (**b & 0b1100_0000) == 0b1000_0000)
-        .count();
-    slice = &slice[skip..];
-    let text = String::from_utf8_lossy(slice).into_owned();
-    if text.len() <= max_bytes {
-        return text;
-    }
-    take_suffix_bytes(&text, max_bytes)
-}
-
-/// Keep at most `max_bytes` from the start of `s`, cut on a UTF-8 char
-/// boundary. Adapted from rtk's truncation-boundary logic in
-/// `write_tee_file` (reference/rtk/src/core/tee.rs) — reused here only
-/// for the in-memory summary, never for the persisted file.
-fn take_prefix_bytes(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_string();
-    }
-    // Walk DOWN to the nearest boundary at or below the cap. Taking every char
-    // that starts below the cap and then adding its full width overshoots by up
-    // to three bytes whenever a multi-byte char straddles the limit.
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s[..end].to_string()
-}
-
-/// Keep at most `max_bytes` from the end of `s`, cut on a UTF-8 char
-/// boundary.
-fn take_suffix_bytes(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_string();
-    }
-    let min_start = s.len() - max_bytes;
-    let boundary = s
-        .char_indices()
-        .find(|(i, _)| *i >= min_start)
-        .map(|(i, _)| i)
-        .unwrap_or(s.len());
-    s[boundary..].to_string()
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::fold::paths::display_shell_path;
+
     use super::*;
 
     fn cfg_with_dir(dir: &std::path::Path) -> FoldConfig {
@@ -420,8 +278,9 @@ mod tests {
         assert!(rendered.contains("line 499"), "must show tail");
         assert!(rendered.contains("500"), "must state total line count");
         assert!(rendered.contains("[full output: brief tail -n +"));
+        let displayed_path = display_shell_path(&fold.path);
         assert_eq!(
-            rendered.matches(fold.path.to_str().unwrap()).count(),
+            rendered.matches(&displayed_path).count(),
             1,
             "the fold path must be printed exactly once, not repeated across two hint lines"
         );
@@ -454,60 +313,6 @@ mod tests {
         assert_eq!(with_thousands_separator(1000), "1,000");
         assert_eq!(with_thousands_separator(4131), "4,131");
         assert_eq!(with_thousands_separator(1234567), "1,234,567");
-    }
-
-    #[test]
-    fn take_prefix_and_suffix_bytes_respect_utf8_boundaries() {
-        let japanese = "\u{6F22}".repeat(333); // 999 bytes, 3-byte chars
-        let prefix = take_prefix_bytes(&japanese, 998);
-        assert!(prefix.len() <= 998);
-        assert!(japanese.starts_with(&prefix));
-
-        let suffix = take_suffix_bytes(&japanese, 998);
-        assert!(suffix.len() <= 998);
-        assert!(japanese.ends_with(&suffix));
-    }
-
-    #[test]
-    fn count_lines_matches_str_lines_count() {
-        for raw in ["", "a", "a\n", "a\nb", "a\nb\n", "a\n\n", "\n", "\n\n"] {
-            assert_eq!(
-                count_lines(raw.as_bytes()),
-                raw.lines().count(),
-                "count_lines disagrees with str::lines on {raw:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn first_and_last_lines_select_without_terminators() {
-        let raw = b"a\nb\nc\n";
-        assert_eq!(first_lines(raw, 0), b"");
-        assert_eq!(first_lines(raw, 2), b"a\nb");
-        assert_eq!(
-            first_lines(raw, 9),
-            raw.as_slice(),
-            "fewer lines than asked: take all"
-        );
-        assert_eq!(last_lines(raw, 0), b"");
-        assert_eq!(last_lines(raw, 1), b"c");
-        assert_eq!(last_lines(raw, 2), b"b\nc");
-        assert_eq!(last_lines(b"a\nb", 1), b"b");
-    }
-
-    #[test]
-    fn lossy_slices_never_exceed_the_cap_on_invalid_utf8() {
-        // Every byte is invalid UTF-8 and expands to a 3-byte U+FFFD.
-        let junk = vec![0xffu8; 100];
-        assert!(lossy_prefix(&junk, 12).len() <= 12);
-        assert!(lossy_suffix(&junk, 12).len() <= 12);
-    }
-
-    #[test]
-    fn lossy_prefix_drops_a_char_cut_by_the_cap() {
-        let text = "ab\u{6F22}cd"; // 'a','b', 3-byte char, 'c','d'
-        // Cap 3 lands inside the multi-byte char: drop it, do not pad U+FFFD.
-        assert_eq!(lossy_prefix(text.as_bytes(), 3), "ab");
     }
 
     #[test]

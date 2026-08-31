@@ -101,6 +101,10 @@ pub(crate) fn resolve_spawn(
 mod tests {
     use super::*;
 
+    fn path_list(entries: &[&str]) -> OsString {
+        env::join_paths(entries.iter().copied().map(Path::new)).unwrap()
+    }
+
     #[cfg(unix)]
     fn make_exec(dir: &Path, name: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
@@ -112,25 +116,23 @@ mod tests {
 
     #[test]
     fn reduce_path_is_a_no_op_when_shim_dir_unset() {
-        let path = OsStr::new("/a:/b:/c");
-        assert_eq!(reduce_path(path, None), OsString::from("/a:/b:/c"));
+        let path = path_list(&["a", "b", "c"]);
+        assert_eq!(reduce_path(&path, None), path);
     }
 
     #[test]
     fn reduce_path_removes_every_occurrence_and_preserves_order() {
-        let path = OsStr::new("/shim:/a:/shim:/b");
-        let reduced = reduce_path(path, Some(OsStr::new("/shim")));
+        let path = path_list(&["shim", "a", "shim", "b"]);
+        let reduced = reduce_path(&path, Some(OsStr::new("shim")));
         let entries: Vec<PathBuf> = env::split_paths(&reduced).collect();
-        assert_eq!(entries, vec![PathBuf::from("/a"), PathBuf::from("/b")]);
+        assert_eq!(entries, vec![PathBuf::from("a"), PathBuf::from("b")]);
     }
 
     #[test]
     fn reduce_path_leaves_other_entries_untouched_when_shim_dir_absent_from_path() {
-        let path = OsStr::new("/a:/b");
-        assert_eq!(
-            reduce_path(path, Some(OsStr::new("/nowhere"))),
-            OsString::from("/a:/b")
-        );
+        let path = path_list(&["a", "b"]);
+        let absent = path_list(&["nowhere"]);
+        assert_eq!(reduce_path(&path, Some(absent.as_os_str())), path);
     }
 
     #[test]
@@ -194,14 +196,15 @@ mod tests {
 
     #[test]
     fn resolve_spawn_is_unchanged_when_shim_dir_unset() {
-        let (program, path) = resolve_spawn(OsStr::new("grep"), None, Some(OsStr::new("/a:/b")));
+        let path_list = path_list(&["a", "b"]);
+        let (program, path) = resolve_spawn(OsStr::new("grep"), None, Some(path_list.as_os_str()));
         assert_eq!(program, OsString::from("grep"));
         assert_eq!(path, None);
     }
 
     #[test]
     fn resolve_spawn_is_unchanged_when_path_unset() {
-        let (program, path) = resolve_spawn(OsStr::new("grep"), Some(OsStr::new("/shim")), None);
+        let (program, path) = resolve_spawn(OsStr::new("grep"), Some(OsStr::new("shim")), None);
         assert_eq!(program, OsString::from("grep"));
         assert_eq!(path, None);
     }
