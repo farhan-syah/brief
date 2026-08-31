@@ -4,8 +4,8 @@
 
 <h3>Large command output stays out of agent context while complete output remains recoverable.</h3>
 
-<p><strong>ogt</strong> wraps noisy shell commands for developers, scripts, coding agents, and any repository.</p>
-
+<p><strong>Output Gate Tool</strong>. It wraps noisy shell commands for developers, scripts, coding agents, and any repository.</p>
+ 
 <p><a href="#what-is-ogt">What is ogt?</a> · <a href="#install">Install</a> · <a href="#quickstart">Quickstart</a> · <a href="#harnesses">Harnesses</a> · <a href="#measurement">Measurement</a> · <a href="#limits">Limits</a></p>
 
 <p><a href="https://github.com/farhan-syah/ogt/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/github/license/farhan-syah/ogt"></a></p>
@@ -14,7 +14,7 @@
 
 ## What is ogt?
 
-ogt is a size gate for command output.
+OGT (Output Gate Tool) is a size gate for command output. It gates large output before it enters the caller's context.
 
 Large grep, git, cargo, file-listing, and diff output can fill agent context. Users often need only a compact result and a recovery path.
 
@@ -158,11 +158,11 @@ Outside the configured roots, commands pass through without folding.
 
 A token is an estimated text unit used by a language model.
 
-| Term         | Meaning                                                     |
-| ------------ | ----------------------------------------------------------- |
-| Raw tokens   | Estimated tokens in the complete command output.            |
+| Term         | Meaning                                                   |
+| ------------ | --------------------------------------------------------- |
+| Raw tokens   | Estimated tokens in the complete command output.          |
 | Shown tokens | Estimated tokens in the output ogt returns to the caller. |
-| Saved tokens | Raw tokens minus shown tokens.                              |
+| Saved tokens | Raw tokens minus shown tokens.                            |
 
 When ogt folds output, it saves the complete output to disk instead of returning it all.
 
@@ -181,10 +181,10 @@ Re-read counts only include reads that also go through ogt, so they are a lower 
 
 This snapshot uses all retained rows from `ogt report --since all` on one PC, captured on 2026-08-31.
 
-| Tool  |             Tracked work |  Raw tokens | Shown tokens | Saved tokens |  Rate |
-| ----- | -----------------------: | ----------: | -----------: | -----------: | ----: |
-| ogt   |      4,756 handled calls | 105,198,542 |    3,816,975 |  101,381,567 | 96.4% |
-| RTK   | 234,623 tracked commands | 838,589,245 |  144,425,960 |  704,537,499 | 84.0% |
+| Tool |             Tracked work |  Raw tokens | Shown tokens | Saved tokens |  Rate |
+| ---- | -----------------------: | ----------: | -----------: | -----------: | ----: |
+| ogt  |      4,756 handled calls | 105,198,542 |    3,816,975 |  101,381,567 | 96.4% |
+| RTK  | 234,623 tracked commands | 838,589,245 |  144,425,960 |  704,537,499 | 84.0% |
 
 The ogt values come from its global report.
 
@@ -198,13 +198,13 @@ They are not an apples-to-apples benchmark, and neither proves billing savings.
 
 ## Config
 
-| Variable                 | Effect                                                                         |
-| ------------------------ | ------------------------------------------------------------------------------ |
-| `OGT_THRESHOLD_TOKENS`   | Set the estimated token threshold. Default: `25000`.                           |
-| `OGT_ENABLED`            | Set `0` or `false` to disable folding.                                         |
-| `OGT`                    | Short enable or disable alias. `OGT_ENABLED` wins when both exist.              |
-| `OGT_FOLD_DIR`           | Set the directory for complete folded output.                                  |
-| `OGT_ROOTS`              | Set platform-separated absolute roots for folding. This overrides the roots file. |
+| Variable               | Effect                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `OGT_THRESHOLD_TOKENS` | Set the estimated token threshold. Default: `25000`.                              |
+| `OGT_ENABLED`          | Set `0` or `false` to disable folding.                                            |
+| `OGT`                  | Short enable or disable alias. `OGT_ENABLED` wins when both exist.                |
+| `OGT_FOLD_DIR`         | Set the directory for complete folded output.                                     |
+| `OGT_ROOTS`            | Set platform-separated absolute roots for folding. This overrides the roots file. |
 
 ## Report flags
 
