@@ -1,0 +1,292 @@
+name: Release
+run-name: Release ${{ inputs.tag }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, for example v0.1.0
+        required: true
+        type: string
+      prepare_run_id:
+        description: Successful Release Prepare run ID holding the binaries
+        required: true
+        type: string
+      publish_crate:
+        description: Publish brief to crates.io
+        required: false
+        type: boolean
+        default: true
+      github_release:
+        description: Create the GitHub Release
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-version:
+    name: Validate release tag
+    uses: ./.github/workflows/release-validate.yml
+    with:
+      ref: ${{ inputs.tag }}
+
+  publish-crate:
+    name: Publish to crates.io
+    needs: validate-version
+    if: inputs.publish_crate
+    runs-on: ubuntu-latest
+    environment: crates.io
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-version.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - name: Stamp release version
+        shell: bash
+        run: bash scripts/ci/stamp_version.sh "${{ needs.validate-version.outputs.version }}"
+
+      - name: Check package archive
+        id: package
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          target_dir="$RUNNER_TEMP/brief-package-target"
+          rm -rf "$target_dir"
+          cargo package --locked --allow-dirty --target-dir "$target_dir"
+          archive="$target_dir/package/brief-${VERSION}.crate"
+          if [[ ! -f $archive || -L $archive ]]; then
+            printf '::error::cargo package did not create %s\n' "$archive" >&2
+            exit 1
+          fi
+          printf 'archive=%s\n' "$archive" >>"$GITHUB_OUTPUT"
+
+      - name: Publish brief
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/crates-response.json"
+          if ! status=$(curl --silent --show-error \
+            --output "$response" \
+            --write-out '%{http_code}' \
+            --header 'User-Agent: brief-ci (github.com/farhan-syah/brief)' \
+            "https://crates.io/api/v1/crates/brief/${VERSION}"); then
+            printf '::error::could not query crates.io for brief@%s\n' "$VERSION" >&2
+            exit 1
+          fi
+
+          case "$status" in
+            200)
+              remote_checksum=$(jq -er '.version.checksum | strings' "$response") || {
+                printf '::error::crates.io response has no checksum for brief@%s\n' "$VERSION" >&2
+                exit 1
+              }
+              local_checksum=$(sha256sum "$ARCHIVE" | awk '{print $1}')
+              if [[ $remote_checksum != "$local_checksum" ]]; then
+                printf '::error::crates.io checksum mismatch for brief@%s\n' "$VERSION" >&2
+                printf '::error::remote=%s local=%s\n' "$remote_checksum" "$local_checksum" >&2
+                exit 1
+              fi
+              printf 'brief@%s already published with the matching checksum; skipping.\n' "$VERSION"
+              ;;
+            404)
+              printf 'Publishing brief@%s...\n' "$VERSION"
+              cargo publish --locked --allow-dirty
+              ;;
+            *)
+              printf '::error::unexpected crates.io HTTP status %s for brief@%s\n' "$status" "$VERSION" >&2
+              cat "$response" >&2
+              exit 1
+              ;;
+          esac
+
+  github-release:
+    name: Create GitHub Release
+    needs: validate-version
+    if: inputs.github_release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-version.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify prepare run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARE_RUN_ID: ${{ inputs.prepare_run_id }}
+          SOURCE_SHA: ${{ needs.validate-version.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! $PREPARE_RUN_ID =~ ^[0-9]+$ ]]; then
+            printf '::error::prepare_run_id must be numeric\n' >&2
+            exit 1
+          fi
+          gh api \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${PREPARE_RUN_ID}" \
+            >"$RUNNER_TEMP/prepare-run.json"
+          bash scripts/ci/verify_prepare_run.sh \
+            "$RUNNER_TEMP/prepare-run.json" \
+            "$SOURCE_SHA"
+
+      - name: Download prepared binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: brief-*
+          run-id: ${{ inputs.prepare_run_id }}
+          github-token: ${{ github.token }}
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: Verify release artifact names
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+        shell: bash
+        run: bash scripts/ci/verify_release_artifacts.sh ./artifacts "$VERSION"
+
+      - name: Verify archive payloads
+        env:
+          ARTIFACT_DIR: ./artifacts
+          VERSION: ${{ needs.validate-version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$ARTIFACT_DIR" "$VERSION" <<'PY'
+          from __future__ import annotations
+
+          import stat
+          import sys
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          artifact_dir = Path(sys.argv[1])
+          version = sys.argv[2]
+          expected_tar_members = {"brief", "LICENSE", "NOTICE"}
+          expected_zip_members = {"brief.exe", "LICENSE", "NOTICE"}
+
+          def fail(message: str) -> None:
+              print(f"::error::{message}", file=sys.stderr)
+              raise SystemExit(1)
+
+          def check_names(names: list[str], expected: set[str], archive: Path) -> None:
+              if len(names) != len(set(names)):
+                  fail(f"{archive.name} contains duplicate members")
+              if set(names) != expected or any(
+                  name != Path(name).name or "/" in name or "\\" in name
+                  for name in names
+              ):
+                  fail(f"{archive.name} does not contain exactly the expected root members")
+
+          def check_tar(archive: Path) -> None:
+              try:
+                  with tarfile.open(archive, mode="r:gz") as handle:
+                      members = handle.getmembers()
+              except (OSError, tarfile.TarError) as error:
+                  fail(f"cannot read {archive.name}: {error}")
+              check_names([member.name for member in members], expected_tar_members, archive)
+              for member in members:
+                  if not member.isfile() or member.issym() or member.islnk():
+                      fail(f"{archive.name} contains a non-regular member: {member.name}")
+
+          def check_zip(archive: Path) -> None:
+              try:
+                  with zipfile.ZipFile(archive) as handle:
+                      members = handle.infolist()
+              except (OSError, zipfile.BadZipFile) as error:
+                  fail(f"cannot read {archive.name}: {error}")
+              names = [member.filename for member in members]
+              check_names(names, expected_zip_members, archive)
+              for member in members:
+                  mode = (member.external_attr >> 16) & stat.S_IFMT(0o170000)
+                  if member.is_dir() or mode not in (0, stat.S_IFREG):
+                      fail(f"{archive.name} contains a non-regular member: {member.filename}")
+
+          tar_archives = [
+              artifact_dir / f"brief-{version}-linux-x64.tar.gz",
+              artifact_dir / f"brief-{version}-linux-arm64.tar.gz",
+              artifact_dir / f"brief-{version}-macos-arm64.tar.gz",
+              artifact_dir / f"brief-{version}-macos-x64.tar.gz",
+          ]
+          zip_archive = artifact_dir / f"brief-{version}-windows-x64.zip"
+          for archive in tar_archives:
+              check_tar(archive)
+          check_zip(zip_archive)
+          print("archive payloads: ok")
+          PY
+
+      - name: Generate and verify checksums
+        env:
+          ARTIFACT_DIR: ./artifacts
+          VERSION: ${{ needs.validate-version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$ARTIFACT_DIR"
+          printf '%s\n' \
+            "brief-${VERSION}-linux-x64.tar.gz" \
+            "brief-${VERSION}-linux-arm64.tar.gz" \
+            "brief-${VERSION}-macos-arm64.tar.gz" \
+            "brief-${VERSION}-macos-x64.tar.gz" \
+            "brief-${VERSION}-windows-x64.zip" \
+            | LC_ALL=C sort \
+            | xargs sha256sum >SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - name: Build release notes
+        env:
+          TAG: ${{ inputs.tag }}
+          BASE_VERSION: ${{ needs.validate-version.outputs.base_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_tag=$(git tag --sort=-v:refname 'v*' | grep -v -Fx "$TAG" | head -n 1 || true)
+          bash scripts/ci/changelog_section.sh "$BASE_VERSION" /tmp/changelog-section.md
+          {
+            cat /tmp/changelog-section.md
+            printf '\n'
+            if [[ -n $previous_tag ]]; then
+              printf '**Full diff:** https://github.com/farhan-syah/brief/compare/%s...%s\n' "$previous_tag" "$TAG"
+            else
+              printf '**Tree:** https://github.com/farhan-syah/brief/tree/%s\n' "$TAG"
+            fi
+          } >/tmp/release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: brief ${{ needs.validate-version.outputs.version }}
+          body_path: /tmp/release-notes.md
+          draft: false
+          prerelease: ${{ needs.validate-version.outputs.is_full_release != 'true' }}
+          fail_on_unmatched_files: true
+          files: artifacts/*

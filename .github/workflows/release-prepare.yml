@@ -1,0 +1,166 @@
+name: Release Prepare
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-prepare-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  validate-version:
+    name: Validate release tag
+    uses: ./.github/workflows/release-validate.yml
+    with:
+      ref: ${{ github.ref_name }}
+
+  ci:
+    name: Run CI
+    needs: validate-version
+    uses: ./.github/workflows/test.yml
+    with:
+      ref: ${{ needs.validate-version.outputs.source_sha }}
+
+  build-binaries:
+    name: Build ${{ matrix.label }}
+    needs:
+      - validate-version
+      - ci
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            label: linux-x64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            label: linux-arm64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate-version.outputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          prefix-key: release-${{ matrix.label }}
+
+      - name: Stamp release version
+        shell: bash
+        run: bash scripts/ci/stamp_version.sh "${{ needs.validate-version.outputs.version }}"
+
+      - name: Build release binary
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
+      - name: Package Unix archive
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          set -euo pipefail
+          staging="$RUNNER_TEMP/brief-${VERSION}-${LABEL}"
+          archive="$RUNNER_TEMP/brief-${VERSION}-${LABEL}.tar.gz"
+          rm -rf "$staging" "$archive"
+          mkdir -p "$staging"
+          cp "target/${TARGET}/release/brief" "$staging/brief"
+          cp LICENSE NOTICE "$staging/"
+          tar -C "$staging" -czf "$archive" brief LICENSE NOTICE
+          expected=$RUNNER_TEMP/brief-expected-members
+          actual=$RUNNER_TEMP/brief-actual-members
+          printf '%s\n' LICENSE NOTICE brief | LC_ALL=C sort >"$expected"
+          tar -tzf "$archive" | LC_ALL=C sort >"$actual"
+          diff -u "$expected" "$actual"
+
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.validate-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          LABEL: ${{ matrix.label }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $staging = Join-Path $env:RUNNER_TEMP "brief-$env:VERSION-$env:LABEL"
+          $archive = Join-Path $env:RUNNER_TEMP "brief-$env:VERSION-$env:LABEL.zip"
+          $extract = Join-Path $env:RUNNER_TEMP "brief-$env:VERSION-$env:LABEL-extracted"
+          Remove-Item -LiteralPath $staging, $archive, $extract -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item "target/$env:TARGET/release/brief.exe" (Join-Path $staging 'brief.exe')
+          Copy-Item LICENSE, NOTICE $staging
+          Compress-Archive -Path (Join-Path $staging 'brief.exe'), (Join-Path $staging 'LICENSE'), (Join-Path $staging 'NOTICE') -DestinationPath $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract
+          $entries = @(Get-ChildItem -LiteralPath $extract -Recurse -Force | ForEach-Object {
+            $_.FullName.Substring($extract.Length + 1).Replace('\', '/')
+          } | Sort-Object)
+          $expected = @('LICENSE', 'NOTICE', 'brief.exe') | Sort-Object
+          if (Compare-Object $expected $entries) {
+            throw "Windows archive members are not exactly brief.exe, LICENSE, NOTICE"
+          }
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: brief-${{ matrix.label }}
+          path: ${{ runner.temp }}/brief-${{ needs.validate-version.outputs.version }}-${{ matrix.label }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+          if-no-files-found: error
+          retention-days: 14
+
+  summary:
+    name: Prepare summary
+    needs:
+      - validate-version
+      - build-binaries
+    if: ${{ needs.build-binaries.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write release instructions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          PREPARE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          cat >>"$GITHUB_STEP_SUMMARY" <<EOF
+          ## Release prepared
+
+          Tag: \`$RELEASE_TAG\`
+          Prepare run ID: \`$PREPARE_RUN_ID\`
+          Binary artifacts expire after 14 days.
+
+          Dispatch the manual publication workflow:
+
+          \`\`\`sh
+          gh workflow run release.yml -R farhan-syah/brief \\
+            -f tag=$RELEASE_TAG -f prepare_run_id=$PREPARE_RUN_ID
+          \`\`\`
+          EOF

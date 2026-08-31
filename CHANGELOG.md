@@ -6,7 +6,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Add GitHub Actions workflows for release validation, preparation, and publication.
+- Add version, provenance, archive, and checksum release helpers.
 
 ## [0.1.0] - 2026-08-31
 

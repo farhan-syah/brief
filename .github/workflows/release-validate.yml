@@ -1,0 +1,203 @@
+name: Release Validate
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Release tag to validate
+        required: true
+        type: string
+    outputs:
+      version:
+        description: Full package version without the v prefix
+        value: ${{ jobs.validate.outputs.version }}
+      base_version:
+        description: Stable base package version
+        value: ${{ jobs.validate.outputs.base_version }}
+      is_full_release:
+        description: Whether the tag is a stable release
+        value: ${{ jobs.validate.outputs.is_full_release }}
+      source_sha:
+        description: Immutable commit resolved from the release tag
+        value: ${{ jobs.validate.outputs.source_sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ref.outputs.version }}
+      base_version: ${{ steps.ref.outputs.base_version }}
+      is_full_release: ${{ steps.ref.outputs.is_full_release }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
+    steps:
+      - name: Validate tag syntax
+        id: ref
+        env:
+          RELEASE_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          fail() {
+            printf '::error::%s\n' "$1" >&2
+            exit 1
+          }
+
+          tag=$RELEASE_REF
+          if [[ ! $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta|rc)\.(0|[1-9][0-9]*))?$ ]]; then
+            fail "invalid release tag '$tag'; expected vX.Y.Z, vX.Y.Z-alpha.N, vX.Y.Z-beta.N, or vX.Y.Z-rc.N"
+          fi
+
+          version=${tag#v}
+          base_version=${version%%-*}
+          is_full_release=true
+          if [[ $version == *-* ]]; then
+            is_full_release=false
+          fi
+
+          {
+            printf 'tag=%s\n' "$tag"
+            printf 'version=%s\n' "$version"
+            printf 'base_version=%s\n' "$base_version"
+            printf 'is_full_release=%s\n' "$is_full_release"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.ref.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - name: Resolve immutable source commit
+        id: source
+        env:
+          RELEASE_TAG: ${{ steps.ref.outputs.tag }}
+        run: |
+          set -euo pipefail
+          fail() {
+            printf '::error::%s\n' "$1" >&2
+            exit 1
+          }
+
+          if ! source_sha=$(git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}^{commit}"); then
+            fail "release tag '$RELEASE_TAG' does not resolve to a commit"
+          fi
+          if ! head_sha=$(git rev-parse --verify --quiet HEAD); then
+            fail 'checked-out source does not resolve to a commit'
+          fi
+          if [[ ! $source_sha =~ ^[0-9a-f]{40}$ ]]; then
+            fail "release tag '$RELEASE_TAG' resolved to an invalid commit '$source_sha'"
+          fi
+          if [[ $source_sha != "$head_sha" ]]; then
+            fail "checked-out HEAD '$head_sha' does not match release tag '$RELEASE_TAG' commit '$source_sha'"
+          fi
+
+          printf 'source_sha=%s\n' "$source_sha" >>"$GITHUB_OUTPUT"
+
+      - name: Check package and lock versions
+        env:
+          EXPECTED_BASE_VERSION: ${{ steps.ref.outputs.base_version }}
+        run: |
+          set -euo pipefail
+          if ! python3 - "$EXPECTED_BASE_VERSION" <<'PY'
+          from __future__ import annotations
+
+          import re
+          import sys
+          from pathlib import Path
+
+          expected = sys.argv[1]
+
+          def fail(message: str) -> None:
+              print(f"::error::{message}", file=sys.stderr)
+              raise SystemExit(1)
+
+          if not Path("Cargo.toml").is_file():
+              fail("Cargo.toml is required")
+          if not Path("Cargo.lock").is_file():
+              fail("Cargo.lock is required")
+
+          try:
+              manifest = Path("Cargo.toml").read_text(encoding="utf-8")
+              lockfile = Path("Cargo.lock").read_text(encoding="utf-8")
+          except OSError as error:
+              fail(f"cannot read package metadata: {error}")
+
+          package_headers = list(re.finditer(r"(?m)^\[package\]\r?$", manifest))
+          if len(package_headers) != 1:
+              fail("Cargo.toml must contain exactly one [package] section")
+          package_start = package_headers[0].end()
+          next_section = re.search(r"(?m)^\[[^\r\n]+\]\r?$", manifest[package_start:])
+          package_end = package_start + next_section.start() if next_section else len(manifest)
+          package_section = manifest[package_start:package_end]
+
+          names = re.findall(r'(?m)^name = "([^"\r\n]*)"\r?$', package_section)
+          if names != ["brief"]:
+              fail('Cargo.toml [package] must name exactly one package: brief')
+          manifest_versions = re.findall(r'(?m)^version = "([^"\r\n]*)"\r?$', package_section)
+          if len(manifest_versions) != 1:
+              fail("Cargo.toml [package] must contain exactly one version")
+          manifest_version = manifest_versions[0]
+
+          package_blocks = re.findall(
+              r"(?ms)^\[\[package\]\]\r?\n.*?(?=^\[\[package\]\]\r?\n|\Z)",
+              lockfile,
+          )
+          brief_blocks = [
+              block
+              for block in package_blocks
+              if re.search(r'(?m)^name = "brief"\r?$', block)
+          ]
+          root_brief_blocks = [
+              block
+              for block in brief_blocks
+              if not re.search(r"(?m)^source = ", block)
+          ]
+          if len(root_brief_blocks) != 1:
+              fail('Cargo.lock must contain exactly one root [[package]] block named brief')
+          lock_versions = re.findall(
+              r'(?m)^version = "([^"\r\n]*)"\r?$', root_brief_blocks[0]
+          )
+          if len(lock_versions) != 1:
+              fail('Cargo.lock brief block must contain exactly one version')
+          lock_version = lock_versions[0]
+
+          if manifest_version != lock_version:
+              fail(
+                  f"Cargo.toml and Cargo.lock versions drift: {manifest_version} != {lock_version}"
+              )
+          if manifest_version != expected:
+              fail(
+                  f"Cargo.toml version {manifest_version} does not match release base {expected}"
+              )
+          if lock_version != expected:
+              fail(f"Cargo.lock version {lock_version} does not match release base {expected}")
+          PY
+          then
+            exit 1
+          fi
+
+      - name: Check changelog section
+        env:
+          BASE_VERSION: ${{ steps.ref.outputs.base_version }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/release-notes.md"
+          if [[ ! -x scripts/ci/changelog_section.sh ]]; then
+            printf '::error::scripts/ci/changelog_section.sh is missing or not executable\n' >&2
+            exit 1
+          fi
+          if ! scripts/ci/changelog_section.sh "$BASE_VERSION" "$output"; then
+            printf '::error::changelog validation failed for [%s]\n' "$BASE_VERSION" >&2
+            exit 1
+          fi
+          if [[ ! -s $output ]]; then
+            printf '::error::changelog section [%s] is empty\n' "$BASE_VERSION" >&2
+            exit 1
+          fi

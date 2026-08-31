@@ -43,6 +43,51 @@ brief --version
 brief --help
 ```
 
+`cargo install brief` is the source-install fallback.
+
+### Prebuilt binaries
+
+GitHub releases provide archives for `linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, and `windows-x64`.
+
+Each Unix archive contains `brief`, `LICENSE`, and `NOTICE`. The Windows archive contains `brief.exe`, `LICENSE`, and `NOTICE`.
+
+`SHA256SUMS` detects transfer corruption but is not a signed build attestation. Prereleases are marked and are not the latest release.
+
+Download and install the Linux x64 archive into a user-writable directory:
+
+```sh
+version=0.1.0
+label=linux-x64
+archive=brief-${version}-${label}.tar.gz
+base_url="https://github.com/farhan-syah/brief/releases/download/v${version}"
+curl -fsSLO "$base_url/$archive"
+curl -fsSLO "$base_url/SHA256SUMS"
+grep -F "  $archive" SHA256SUMS | sha256sum -c -
+tmp=$(mktemp -d)
+tar -xzf "$archive" -C "$tmp"
+mkdir -p "$HOME/.local/bin"
+install -m 0755 "$tmp/brief" "$HOME/.local/bin/brief"
+rm -rf "$tmp"
+```
+
+On Windows, use PowerShell and add `$HOME\bin` to your user `PATH`:
+
+```powershell
+$version = "0.1.0"
+$label = "windows-x64"
+$archive = "brief-$version-$label.zip"
+$baseUrl = "https://github.com/farhan-syah/brief/releases/download/v$version"
+Invoke-WebRequest "$baseUrl/$archive" -OutFile $archive
+Invoke-WebRequest "$baseUrl/SHA256SUMS" -OutFile SHA256SUMS
+$line = Get-Content SHA256SUMS | Where-Object { $_ -like "*  $archive" }
+$expected = (($line -split "\s+")[0]).ToLowerInvariant()
+$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "SHA256SUMS check failed" }
+$destination = Join-Path $HOME "bin"
+New-Item -ItemType Directory -Force $destination | Out-Null
+Expand-Archive $archive -DestinationPath $destination -Force
+```
+
 ## Quickstart
 
 Run brief inside any repository.
@@ -114,8 +159,8 @@ A token is an estimated text unit used by a language model.
 | Term         | Meaning                                                     |
 | ------------ | ----------------------------------------------------------- |
 | Raw tokens   | Estimated tokens in the complete command output.            |
-| Kept tokens  | Estimated tokens in the output brief returns to the caller. |
-| Saved tokens | Raw tokens minus kept tokens.                               |
+| Shown tokens | Estimated tokens in the output brief returns to the caller. |
+| Saved tokens | Raw tokens minus shown tokens.                              |
 
 When brief folds output, it saves the complete output to disk instead of returning it all.
 
@@ -134,10 +179,10 @@ Re-read counts only include reads that also go through brief, so they are a lowe
 
 This snapshot uses all retained rows from `brief report --since all` on one PC, captured on 2026-08-31.
 
-| Tool  |             Tracked work |                   Before |                  Returned | Saved tokens |  Rate |
-| ----- | -----------------------: | -----------------------: | ------------------------: | -----------: | ----: |
-| brief |      4,756 handled calls |   105,198,542 raw tokens |     3,816,975 kept tokens |  101,381,567 | 96.4% |
-| RTK   | 234,623 tracked commands | 838,589,245 input tokens | 144,425,960 output tokens |  704,537,499 | 84.0% |
+| Tool  |             Tracked work |  Raw tokens | Shown tokens | Saved tokens |  Rate |
+| ----- | -----------------------: | ----------: | -----------: | -----------: | ----: |
+| brief |      4,756 handled calls | 105,198,542 |    3,816,975 |  101,381,567 | 96.4% |
+| RTK   | 234,623 tracked commands | 838,589,245 |  144,425,960 |  704,537,499 | 84.0% |
 
 The brief values come from its global report.
 
