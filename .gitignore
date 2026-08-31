@@ -1,6 +1,6 @@
-# Everything under .claude/ is local: session state, and the decision record whose
-# evidence quotes real project names and paths from private transcripts.
+# Local agent state.
 .claude/
+.agents/
 
 # The tools read private local transcripts and print to stdout. Nothing they emit
 # belongs in git, however it is redirected.
