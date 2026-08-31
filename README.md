@@ -11,7 +11,7 @@
 <p><a href="https://github.com/farhan-syah/brief/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/github/license/farhan-syah/brief"></a></p>
 
 </div>
- 
+
 ## What is brief?
 
 brief is a size gate for command output.
